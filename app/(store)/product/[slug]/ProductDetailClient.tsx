@@ -225,12 +225,15 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const handleOptionSelect = (optName: string, val: string) => {
     const newOpts = { ...selectedOptions, [optName]: val };
     setSelectedOptions(newOpts);
-    // Auto-find matching variant when all variant-generating options are selected
+    // Auto-find matching variant when all variant-generating options are selected.
+    // Selected option values may carry a "|#hex" suffix (e.g. "Green|#263e0f"),
+    // while variants store just the name ("Green"), so normalize both sides.
+    const normalize = (s: any) => String(s ?? '').split('|')[0].trim().toLowerCase();
     if (optionNames.length > 0) {
       const allVarSelected = optionNames.every(n => newOpts[n]);
       if (allVarSelected && product?.variants) {
         const match = product.variants.find((v: any) =>
-          optionNames.every((n: string, idx: number) => v[`option${idx + 1}`] === newOpts[n])
+          optionNames.every((n: string, idx: number) => normalize(v[`option${idx + 1}`]) === normalize(newOpts[n]))
         );
         setSelectedVariant(match || null);
       } else {
@@ -250,7 +253,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
     // Build variant display string from selected options
     let variantLabel: string | undefined;
     if (selectedVariant) {
-      const parts = optionNames.map(n => selectedOptions[n]).filter(Boolean);
+      const parts = optionNames.map(n => (selectedOptions[n] || '').split('|')[0].trim()).filter(Boolean);
       variantLabel = parts.length > 0 ? parts.join(' / ') : (selectedVariant.name || undefined);
     }
 

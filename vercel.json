@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/payment/moolre/reconcile?days=3",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }

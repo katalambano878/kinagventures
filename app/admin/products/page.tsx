@@ -109,29 +109,73 @@ export default function ProductsPage() {
     }
   };
 
+  // Delete a product when possible, otherwise archive it.
+  // Products referenced by order_items cannot be hard-deleted (it would break
+  // order history), so we archive those instead (hidden from the storefront).
+  const removeOrArchiveProduct = async (
+    productId: string
+  ): Promise<'deleted' | 'archived' | 'error'> => {
+    const { error } = await supabase.from('products').delete().eq('id', productId);
+    if (!error) return 'deleted';
+    if (error.code !== '23503') {
+      console.error('Delete product error:', error);
+      return 'error';
+    }
+
+    // Foreign-key blocked. If the product has orders, archive it.
+    const { count } = await supabase
+      .from('order_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', productId);
+
+    if (!count) {
+      // No orders — owned children (images/variants) are blocking; clear them and retry.
+      await supabase.from('product_images').delete().eq('product_id', productId);
+      await supabase.from('product_variants').delete().eq('product_id', productId);
+      const { error: retryError } = await supabase.from('products').delete().eq('id', productId);
+      if (!retryError) return 'deleted';
+    }
+
+    const { error: archiveError } = await supabase
+      .from('products')
+      .update({ status: 'archived' })
+      .eq('id', productId);
+    if (archiveError) {
+      console.error('Archive product error:', archiveError);
+      return 'error';
+    }
+    return 'archived';
+  };
+
   const handleDeleteProduct = async (productId: string) => {
-    if (confirm('Are you sure you want to delete this product?')) {
-      const { error } = await supabase.from('products').delete().eq('id', productId);
-      if (!error) {
-        setProducts(products.filter(p => p.id !== productId));
-        alert('Product deleted successfully');
-      } else {
-        alert('Error deleting product');
-      }
+    if (!confirm('Are you sure you want to delete this product?')) return;
+    const result = await removeOrArchiveProduct(productId);
+    if (result === 'deleted') {
+      setProducts(products.filter(p => p.id !== productId));
+      alert('Product deleted successfully');
+    } else if (result === 'archived') {
+      setProducts(products.map(p => (p.id === productId ? { ...p, status: 'archived' } : p)));
+      alert('This product has existing orders, so it was archived (hidden from the store) instead of deleted, to preserve order history.');
+    } else {
+      alert('Error deleting product. Please try again.');
     }
   };
 
   const handleBulkDelete = async () => {
-    if (confirm(`Are you sure you want to delete ${selectedProducts.length} products?`)) {
-      const { error } = await supabase.from('products').delete().in('id', selectedProducts);
-      if (!error) {
-        setProducts(products.filter(p => !selectedProducts.includes(p.id)));
-        setSelectedProducts([]);
-        alert('Products deleted successfully');
-      } else {
-        alert('Error deleting products');
-      }
+    if (!confirm(`Are you sure you want to delete ${selectedProducts.length} products?`)) return;
+    let deleted = 0, archived = 0, failed = 0;
+    for (const id of selectedProducts) {
+      const result = await removeOrArchiveProduct(id);
+      if (result === 'deleted') deleted++;
+      else if (result === 'archived') archived++;
+      else failed++;
     }
+    setSelectedProducts([]);
+    await fetchProducts();
+    const parts = [`${deleted} deleted`];
+    if (archived) parts.push(`${archived} archived (had orders)`);
+    if (failed) parts.push(`${failed} failed`);
+    alert(parts.join(', ') + '.');
   };
 
   const filteredProducts = products.filter(product => {

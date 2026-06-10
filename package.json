@@ -29,7 +29,7 @@
   },
   "scripts": {
     "build": "next build",
-    "dev": "npx next dev -H 0.0.0.0 -p 3001",
+    "dev": "npx next dev -H 0.0.0.0 -p 3007",
     "lint": "next lint",
     "compress:images": "node scripts/compress-media.mjs",
     "compress:video": "sh scripts/compress-video.sh",

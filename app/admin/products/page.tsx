@@ -147,6 +147,21 @@ export default function ProductsPage() {
     return 'archived';
   };
 
+  // Toggle a product between archived (hidden from storefront) and active.
+  const handleToggleArchive = async (productId: string, currentStatus: string) => {
+    const nextStatus = currentStatus === 'archived' ? 'active' : 'archived';
+    const { error } = await supabase
+      .from('products')
+      .update({ status: nextStatus })
+      .eq('id', productId);
+    if (error) {
+      console.error('Toggle archive error:', error);
+      alert(`Could not ${nextStatus === 'archived' ? 'archive' : 'reactivate'} the product. Please try again.`);
+      return;
+    }
+    setProducts(products.map(p => (p.id === productId ? { ...p, status: nextStatus } : p)));
+  };
+
   const handleDeleteProduct = async (productId: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
     const result = await removeOrArchiveProduct(productId);
@@ -389,6 +404,17 @@ export default function ProductsPage() {
                           <i className="ri-edit-line text-lg"></i>
                         </Link>
                         <button
+                          onClick={() => handleToggleArchive(product.id, product.status)}
+                          title={product.status === 'archived' ? 'Reactivate (show in store)' : 'Archive (hide from store)'}
+                          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
+                            product.status === 'archived'
+                              ? 'text-gray-600 hover:text-green-700 hover:bg-green-50'
+                              : 'text-gray-600 hover:text-amber-700 hover:bg-amber-50'
+                          }`}
+                        >
+                          <i className={`${product.status === 'archived' ? 'ri-inbox-unarchive-line' : 'ri-archive-line'} text-lg`}></i>
+                        </button>
+                        <button
                           onClick={() => handleDeleteProduct(product.id)}
                           className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                         >
@@ -434,6 +460,17 @@ export default function ProductsPage() {
                   >
                     Edit
                   </Link>
+                  <button
+                    onClick={() => handleToggleArchive(product.id, product.status)}
+                    title={product.status === 'archived' ? 'Reactivate (show in store)' : 'Archive (hide from store)'}
+                    className={`w-9 h-9 flex items-center justify-center border-2 rounded-lg transition-colors cursor-pointer ${
+                      product.status === 'archived'
+                        ? 'border-gray-300 text-gray-700 hover:border-green-600 hover:text-green-600'
+                        : 'border-gray-300 text-gray-700 hover:border-amber-600 hover:text-amber-600'
+                    }`}
+                  >
+                    <i className={product.status === 'archived' ? 'ri-inbox-unarchive-line' : 'ri-archive-line'}></i>
+                  </button>
                   <button
                     onClick={() => handleDeleteProduct(product.id)}
                     className="w-9 h-9 flex items-center justify-center border-2 border-gray-300 text-gray-700 hover:border-red-600 hover:text-red-600 rounded-lg transition-colors cursor-pointer"

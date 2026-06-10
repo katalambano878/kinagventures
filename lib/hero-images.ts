@@ -40,33 +40,11 @@ export type HeroSlide = {
   objectPosition?: string;
 };
 
-/** Home page slider — first 3 use CMS defaults, last 2 are themed flash-sale slides */
+/** Home page slider — uses CMS defaults */
 export const HERO_SLIDES_HOME: HeroSlide[] = [
   { src: HERO_IMAGES[0] },
   { src: HERO_IMAGES[1] },
   { src: HERO_IMAGES[2] },
-  {
-    src: '/hero-flash-sale-1.png',
-    theme: 'flash-sale',
-    badge: 'Birthday Flash Sale · Limited Time',
-    headline: 'Preorder Birthday Flash Sale',
-    subheadline:
-      "We're celebrating big — exclusive birthday deals on every preorder this week. Reserve yours before they're gone.",
-    ctaText: 'Shop the Flash Sale',
-    ctaHref: '/preorders',
-    objectPosition: 'center',
-  },
-  {
-    src: '/hero-flash-sale-2.png',
-    theme: 'flash-sale',
-    badge: 'Birthday Flash Sale · Limited Time',
-    headline: 'Preorder Birthday Flash Sale',
-    subheadline:
-      'Our biggest birthday celebration yet. Preorder today and unlock special prices — only while the sale lasts.',
-    ctaText: 'Shop the Flash Sale',
-    ctaHref: '/preorders',
-    objectPosition: 'center top',
-  },
 ];
 
 /** For other pages' hero sections (remaining 14) */

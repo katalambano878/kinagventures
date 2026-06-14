@@ -308,7 +308,7 @@ export default function AdminDashboard() {
                 </div>
                 <i className="ri-arrow-right-line"></i>
               </Link>
-              <Link href="/admin/pos" className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-50 text-gray-700 hover:text-gray-900 rounded-lg transition-colors group">
+              {/* <Link href="/admin/pos" className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-50 text-gray-700 hover:text-gray-900 rounded-lg transition-colors group">
                 <div className="flex items-center font-medium">
                   <span className="w-8 h-8 rounded-full bg-white flex items-center justify-center mr-3 group-hover:bg-gray-100 transition-colors shadow-sm">
                     <i className="ri-computer-line"></i>
@@ -316,7 +316,7 @@ export default function AdminDashboard() {
                   Open POS
                 </div>
                 <i className="ri-arrow-right-line"></i>
-              </Link>
+              </Link> */}
               <Link href="/admin/orders" className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-50 text-gray-700 hover:text-gray-900 rounded-lg transition-colors group">
                 <div className="flex items-center font-medium">
                   <span className="w-8 h-8 rounded-full bg-white flex items-center justify-center mr-3 group-hover:bg-gray-100 transition-colors shadow-sm">

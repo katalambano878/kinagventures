@@ -13,9 +13,13 @@ interface OrderSummaryProps {
   shipping: number;
   tax: number;
   total: number;
+  paymentPlan?: 'full' | 'deposit_50' | 'partial';
+  depositAmount?: number;
+  balanceDue?: number;
 }
 
-export default function OrderSummary({ items, subtotal, shipping, tax, total }: OrderSummaryProps) {
+export default function OrderSummary({ items, subtotal, shipping, tax, total, paymentPlan = 'full', depositAmount = 0, balanceDue = 0 }: OrderSummaryProps) {
+  const isDeposit = paymentPlan === 'deposit_50' || paymentPlan === 'partial';
   return (
     <div className="bg-white rounded-xl shadow-sm p-6 sticky top-4">
       <h2 className="text-xl font-bold text-gray-900 mb-6">Order Summary</h2>
@@ -62,6 +66,23 @@ export default function OrderSummary({ items, subtotal, shipping, tax, total }: 
           <span className="text-2xl font-bold text-gray-900">GH₵ {total.toFixed(2)}</span>
         </div>
       </div>
+
+      {isDeposit && (
+        <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+          <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm">
+            <i className="ri-wallet-3-line text-base"></i>
+            <span>50% Deposit Plan</span>
+          </div>
+          <div className="flex justify-between text-sm text-gray-700">
+            <span>Pay now (50%)</span>
+            <span className="font-semibold text-emerald-700">GH₵ {depositAmount.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-sm text-gray-700">
+            <span>Balance on delivery/pickup</span>
+            <span className="font-semibold text-amber-700">GH₵ {balanceDue.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
         <div className="flex items-center space-x-2 text-gray-800">

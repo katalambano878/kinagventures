@@ -9,6 +9,7 @@ import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabase';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useRecaptcha } from '@/hooks/useRecaptcha';
+import { computeDeposit, type PaymentPlan } from '@/lib/payment-plan';
 
 export default function CheckoutPage() {
   usePageTitle('Checkout');
@@ -58,6 +59,11 @@ export default function CheckoutPage() {
   const [paymentMethod] = useState<'moolre'>('moolre');
   const [errors, setErrors] = useState<any>({});
 
+  // Part-payment (50% deposit) — only offered when every item in the cart is a
+  // pre-order (a product with metadata.preorder_shipping set).
+  const [paymentPlan, setPaymentPlan] = useState<PaymentPlan>('full');
+  const [preorderMap, setPreorderMap] = useState<Record<string, boolean>>({});
+
 
 
   // Check auth and cart
@@ -92,6 +98,33 @@ export default function CheckoutPage() {
   const shippingCost = 0; // Delivery options temporarily disabled
   const tax = 0; // No Tax
   const total = subtotal + shippingCost + tax;
+
+  // Fetch pre-order flags for the products in the cart so we know whether to
+  // offer the 50% deposit plan (deposit is pre-order-only).
+  const isValidUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+  useEffect(() => {
+    const ids = cart.map(i => i.id).filter(id => isValidUUID(id));
+    if (ids.length === 0) { setPreorderMap({}); return; }
+    let active = true;
+    (async () => {
+      const { data } = await supabase.from('products').select('id, metadata').in('id', ids);
+      if (!active) return;
+      const map: Record<string, boolean> = {};
+      (data || []).forEach((p: any) => { map[p.id] = !!p.metadata?.preorder_shipping; });
+      setPreorderMap(map);
+    })();
+    return () => { active = false; };
+  }, [cart]);
+
+  const cartAllPreorder = cart.length > 0 && cart.every(i => preorderMap[i.id]);
+  const depositEligible = cartAllPreorder;
+
+  // If the deposit option becomes unavailable, snap back to paying in full.
+  useEffect(() => {
+    if (!depositEligible && paymentPlan !== 'full') setPaymentPlan('full');
+  }, [depositEligible, paymentPlan]);
+
+  const { depositAmount, balanceDue, upfrontAmount } = computeDeposit(total, paymentPlan);
 
   const validateShipping = () => {
     const newErrors: any = {};
@@ -168,7 +201,10 @@ export default function CheckoutPage() {
             first_name: shippingData.firstName,
             last_name: shippingData.lastName,
             tracking_number: trackingNumber,
-            payment_method: paymentMethod
+            payment_method: paymentMethod,
+            payment_plan: depositEligible ? paymentPlan : 'full',
+            deposit_amount: depositEligible ? depositAmount : total,
+            balance_due: depositEligible ? balanceDue : 0
           }
         }])
         .select()
@@ -177,9 +213,6 @@ export default function CheckoutPage() {
       if (orderError) throw orderError;
 
       // 2. Create Order Items (with UUID validation)
-      // Helper to check if string is a valid UUID
-      const isValidUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
-      
       // Build order items, resolving slugs to UUIDs if needed
       const orderItems = [];
       
@@ -605,6 +638,44 @@ export default function CheckoutPage() {
                     </div>
                   </div>
 
+                  {depositEligible && (
+                    <>
+                      <h2 className="text-xl font-bold text-gray-900 mt-8 mb-2">Payment Plan</h2>
+                      <p className="text-sm text-gray-600 mb-4">Your cart is pre-order only, so you can reserve it with a 50% deposit and pay the balance on delivery or pickup.</p>
+                      <div className="space-y-3">
+                        <label className={`flex items-center justify-between gap-4 p-4 border-2 rounded-lg cursor-pointer transition-colors ${paymentPlan === 'full' ? 'border-gray-900 bg-gray-50' : 'border-gray-300 hover:border-gray-400'}`}>
+                          <div className="flex items-center gap-4">
+                            <input type="radio" name="paymentPlan" value="full" checked={paymentPlan === 'full'} onChange={() => setPaymentPlan('full')} className="w-5 h-5 text-gray-900" />
+                            <div>
+                              <p className="font-semibold text-gray-900">Pay in full</p>
+                              <p className="text-sm text-gray-600">Settle the whole order now.</p>
+                            </div>
+                          </div>
+                          <p className="font-bold text-gray-900 whitespace-nowrap">GH₵ {total.toFixed(2)}</p>
+                        </label>
+
+                        <label className={`flex items-center justify-between gap-4 p-4 border-2 rounded-lg cursor-pointer transition-colors ${paymentPlan === 'deposit_50' ? 'border-gray-900 bg-gray-50' : 'border-gray-300 hover:border-gray-400'}`}>
+                          <div className="flex items-center gap-4">
+                            <input type="radio" name="paymentPlan" value="deposit_50" checked={paymentPlan === 'deposit_50'} onChange={() => setPaymentPlan('deposit_50')} className="w-5 h-5 text-gray-900" />
+                            <div>
+                              <p className="font-semibold text-gray-900">Pay 50% deposit</p>
+                              <p className="text-sm text-gray-600">
+                                Pay <span className="font-semibold text-emerald-700">GH₵ {depositAmount.toFixed(2)}</span> now, balance of <span className="font-semibold text-amber-700">GH₵ {balanceDue.toFixed(2)}</span> on delivery/pickup.
+                              </p>
+                            </div>
+                          </div>
+                          <p className="font-bold text-emerald-700 whitespace-nowrap">GH₵ {depositAmount.toFixed(2)}</p>
+                        </label>
+                      </div>
+
+                      {paymentPlan === 'deposit_50' && (
+                        <div className="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                          Balance of <strong>GH₵ {balanceDue.toFixed(2)}</strong> must be paid in full before your goods are released.
+                        </div>
+                      )}
+                    </>
+                  )}
+
                   <div className="flex flex-col-reverse md:flex-row gap-4 mt-6">
                     <button
                       onClick={() => setCurrentStep(1)}
@@ -626,6 +697,8 @@ export default function CheckoutPage() {
                           </svg>
                           Processing...
                         </>
+                      ) : paymentPlan === 'deposit_50' ? (
+                        `Pay 50% Deposit · GH₵ ${upfrontAmount.toFixed(2)}`
                       ) : (
                         'Pay with Mobile Money'
                       )}
@@ -647,6 +720,9 @@ export default function CheckoutPage() {
               shipping={shippingCost}
               tax={tax}
               total={total}
+              paymentPlan={depositEligible ? paymentPlan : 'full'}
+              depositAmount={depositAmount}
+              balanceDue={balanceDue}
             />
           </div>
         </div>

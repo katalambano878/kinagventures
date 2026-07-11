@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendOrderConfirmation } from '@/lib/notifications';
+import { readPaymentPlan, computeDeposit, isPartialPlan } from '@/lib/payment-plan';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -18,7 +19,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
  */
 export async function POST(req: Request) {
     try {
-        const { orderNumber, fromRedirect } = await req.json();
+        const { orderNumber, fromRedirect, purpose: purposeRaw } = await req.json();
 
         if (!orderNumber) {
             return NextResponse.json({ success: false, message: 'Missing orderNumber' }, { status: 400 });
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
         }
 
-        // Already paid - no action needed
+        // Already fully paid - no action needed
         if (order.payment_status === 'paid') {
             console.log('[Verify] Order already paid:', orderNumber);
             return NextResponse.json({ 
@@ -48,6 +49,33 @@ export async function POST(req: Request) {
                 message: 'Order already paid' 
             });
         }
+
+        // Resolve plan + whether this is a balance-settlement verification.
+        const { plan, depositAmount: storedDeposit } = readPaymentPlan(order);
+        const isPartial = isPartialPlan(plan);
+        const { depositAmount, balanceDue } = computeDeposit(Number(order.total) || 0, plan, storedDeposit);
+        const externalRef = order.metadata?.moolre_externalref || '';
+        const isBalance =
+            String(purposeRaw || '').toLowerCase() === 'balance' ||
+            String(order.metadata?.payment_purpose || '').toLowerCase() === 'balance' ||
+            /-B\d+$/.test(String(externalRef));
+
+        // Deposit already recorded and this isn't a balance payment → the order
+        // is settled as far as the customer's upfront obligation goes.
+        if (order.payment_status === 'partially_paid' && !isBalance) {
+            console.log('[Verify] Deposit already recorded:', orderNumber);
+            return NextResponse.json({
+                success: true,
+                status: order.status,
+                payment_status: order.payment_status,
+                message: 'Deposit already recorded'
+            });
+        }
+
+        // The amount we expect Moolre to have charged for this step.
+        const expectedAmount = isBalance
+            ? (Number(order.metadata?.balance_due) || balanceDue)
+            : (isPartial ? depositAmount : Number(order.total));
 
         // 2. Verify payment method is moolre
         if (order.metadata?.payment_method !== 'moolre' && order.metadata?.payment_method !== undefined) {
@@ -92,8 +120,8 @@ export async function POST(req: Request) {
                         (d.txstatus === 1 || d.txstatus === '1')) {
                         // Guard against amount tampering when amount is present
                         const moolreAmount = d.amount ? parseFloat(d.amount) : null;
-                        if (moolreAmount !== null && Math.abs(moolreAmount - Number(order.total)) > 0.01) {
-                            console.warn('[Verify] Amount mismatch for', ref, '- expected', order.total, 'got', moolreAmount);
+                        if (moolreAmount !== null && Math.abs(moolreAmount - expectedAmount) > 0.01) {
+                            console.warn('[Verify] Amount mismatch for', ref, '- expected', expectedAmount, 'got', moolreAmount);
                             continue;
                         }
                         moolreApiVerified = true;
@@ -124,24 +152,53 @@ export async function POST(req: Request) {
 
         // Prefer recording Moolre's real transaction id; fall back to a source tag.
         const moolreRef = moolreTxId || 'moolre-api';
-        console.log('[Verify] Marking order paid via:', moolreRef, 'for:', orderNumber);
+        console.log('[Verify] Confirming payment via:', moolreRef, 'for:', orderNumber, '| balance:', isBalance, '| partial:', isPartial);
 
-        // 5. Mark as paid
-        const { data: orderJson, error: updateError } = await supabase
-            .rpc('mark_order_paid', {
+        // 5. Record the payment with the right RPC.
+        let orderJson: any = null;
+        let resultPaymentStatus: 'paid' | 'partially_paid' = 'paid';
+
+        if (isBalance) {
+            const { data: rpcJson, error: balErr } = await supabase.rpc('mark_balance_collected', {
+                p_order_id: order.id,
+                p_collected_by: null,
+                p_note: `Moolre balance payment ${moolreRef}`
+            });
+            if (balErr) {
+                console.error('[Verify] mark_balance_collected error:', balErr.message);
+                return NextResponse.json({ success: false, message: 'Failed to update order' }, { status: 500 });
+            }
+            orderJson = rpcJson;
+            resultPaymentStatus = 'paid';
+        } else if (isPartial) {
+            const { data: rpcJson, error: updateError } = await supabase.rpc('mark_order_partially_paid', {
+                order_ref: orderNumber,
+                moolre_ref: moolreRef,
+                deposit_amount: depositAmount
+            });
+            if (updateError) {
+                console.error('[Verify] RPC Error:', updateError.message);
+                return NextResponse.json({ success: false, message: 'Failed to update order' }, { status: 500 });
+            }
+            orderJson = rpcJson;
+            resultPaymentStatus = 'partially_paid';
+        } else {
+            const { data: rpcJson, error: updateError } = await supabase.rpc('mark_order_paid', {
                 order_ref: orderNumber,
                 moolre_ref: moolreRef
             });
-
-        if (updateError) {
-            console.error('[Verify] RPC Error:', updateError.message);
-            return NextResponse.json({ success: false, message: 'Failed to update order' }, { status: 500 });
+            if (updateError) {
+                console.error('[Verify] RPC Error:', updateError.message);
+                return NextResponse.json({ success: false, message: 'Failed to update order' }, { status: 500 });
+            }
+            orderJson = rpcJson;
+            resultPaymentStatus = 'paid';
         }
 
-        console.log('[Verify] Order marked as paid:', orderNumber);
+        console.log('[Verify] Order updated:', orderNumber, '->', resultPaymentStatus);
 
-        // 6. Update customer stats
-        if (orderJson?.email) {
+        // 6. Update customer stats (skip on balance to avoid double-counting).
+        if (orderJson?.email && !isBalance) {
             try {
                 await supabase.rpc('update_customer_stats', {
                     p_customer_email: orderJson.email,
@@ -164,8 +221,8 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ 
             success: true, 
-            status: 'processing',
-            payment_status: 'paid',
+            status: orderJson?.status || 'processing',
+            payment_status: resultPaymentStatus,
             message: 'Payment verified and order updated' 
         });
 

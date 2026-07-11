@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { readPaymentPlan } from '@/lib/payment-plan';
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
   const orderNumber = searchParams?.get('order');
   const paymentSuccess = searchParams?.get('payment_success');
   const paystackReference = searchParams?.get('reference');
+  const purpose = searchParams?.get('purpose');
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showConfetti, setShowConfetti] = useState(true);
@@ -35,8 +37,13 @@ function OrderSuccessContent() {
         if (error) throw error;
         setOrder(orderData);
 
-        // If redirected from payment and order is still pending, try to verify
-        if (paymentSuccess === 'true' && orderData && orderData.payment_status !== 'paid') {
+        // If redirected from payment and this step isn't settled yet, verify.
+        // A balance payment (purpose=balance) still needs verification even when
+        // the order is already partially_paid.
+        const settled = purpose === 'balance'
+          ? orderData?.payment_status === 'paid'
+          : (orderData?.payment_status === 'paid' || orderData?.payment_status === 'partially_paid');
+        if (paymentSuccess === 'true' && orderData && !settled) {
           verifyPayment(orderNumber, orderData, paystackReference);
         }
       } catch (err) {
@@ -60,7 +67,10 @@ function OrderSuccessContent() {
       .eq('order_number', orderNum)
       .single();
 
-    if (refreshed?.payment_status === 'paid') {
+    const alreadySettled = purpose === 'balance'
+      ? refreshed?.payment_status === 'paid'
+      : (refreshed?.payment_status === 'paid' || refreshed?.payment_status === 'partially_paid');
+    if (alreadySettled) {
       setOrder(refreshed);
       setVerifying(false);
       return;
@@ -74,7 +84,7 @@ function OrderSuccessContent() {
         : '/api/payment/moolre/verify';
       const body = paymentMethod === 'paystack'
         ? JSON.stringify({ orderNumber: orderNum, reference: reference || orderNum })
-        : JSON.stringify({ orderNumber: orderNum, fromRedirect: true });
+        : JSON.stringify({ orderNumber: orderNum, fromRedirect: true, purpose: purpose || undefined });
 
       const res = await fetch(url, {
         method: 'POST',
@@ -84,7 +94,7 @@ function OrderSuccessContent() {
 
       const result = await res.json();
 
-      if (result.success && result.payment_status === 'paid') {
+      if (result.success && (result.payment_status === 'paid' || result.payment_status === 'partially_paid')) {
         const { data: updated } = await supabase
           .from('orders')
           .select('*, order_items (*)')
@@ -129,6 +139,12 @@ function OrderSuccessContent() {
   const orderDate = new Date(order.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
   const pointsEarned = Math.floor(order.total / 10); // Example logic: 1 point per 10 currency units
   const isPaid = order.payment_status === 'paid';
+  const isPartiallyPaid = order.payment_status === 'partially_paid';
+  const { plan, depositAmount, balanceDue } = readPaymentPlan(order);
+  const isDeposit = isPartiallyPaid && (plan === 'deposit_50' || plan === 'partial');
+  const pickupOrDelivery = order.shipping_method === 'pickup' ? 'pickup' : 'delivery';
+  // "Settled" = the customer has met their obligation for now (paid in full OR deposit received).
+  const isSettled = isPaid || isPartiallyPaid;
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50">
@@ -159,15 +175,40 @@ function OrderSuccessContent() {
             </div>
 
             <h1 className="text-4xl font-bold text-gray-900 mb-4">
-              {isPaid ? 'Order Confirmed!' : 'Order Created'}
+              {isDeposit ? 'Deposit Received!' : isPaid ? 'Order Confirmed!' : 'Order Created'}
             </h1>
             <p className="text-xl text-gray-600 mb-8">
-              {isPaid
-                ? "Thank you for your purchase. We're processing your order now."
-                : 'Your order is pending payment. Complete payment to confirm processing.'}
+              {isDeposit
+                ? `Thanks! We've received your deposit and reserved your order. The balance is due on ${pickupOrDelivery}.`
+                : isPaid
+                  ? "Thank you for your purchase. We're processing your order now."
+                  : 'Your order is pending payment. Complete payment to confirm processing.'}
             </p>
 
-            {!isPaid && (
+            {isDeposit && (
+              <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-5 mb-8 text-left">
+                <p className="font-bold text-gray-900 mb-3">Balance due on {pickupOrDelivery}</p>
+                <div className="grid sm:grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <p className="text-xs text-gray-600">Order Total</p>
+                    <p className="text-lg font-bold text-gray-900">GH₵ {Number(order.total).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600">Deposit Paid (50%)</p>
+                    <p className="text-lg font-bold text-emerald-700">GH₵ {depositAmount.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600">Balance Due</p>
+                    <p className="text-lg font-bold text-amber-700">GH₵ {balanceDue.toFixed(2)}</p>
+                  </div>
+                </div>
+                <p className="text-sm text-amber-900 leading-relaxed">
+                  The remaining <strong>GH₵ {balanceDue.toFixed(2)}</strong> can be paid by cash or mobile money on {pickupOrDelivery}, or online now using the button below.
+                </p>
+              </div>
+            )}
+
+            {!isSettled && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-8 text-left">
                 <div className="flex items-start gap-3">
                   <i className="ri-time-line text-amber-600 text-xl mt-0.5"></i>
@@ -195,7 +236,15 @@ function OrderSuccessContent() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
-              {isPaid ? (
+              {isDeposit ? (
+                <Link
+                  href={`/complete-payment?ref=${encodeURIComponent(order.order_number)}`}
+                  className="bg-primary hover:bg-primary text-white px-8 py-4 rounded-lg font-semibold transition-colors inline-flex items-center justify-center whitespace-nowrap"
+                >
+                  <i className="ri-secure-payment-line mr-2"></i>
+                  Pay Balance Now
+                </Link>
+              ) : isPaid ? (
                 <Link
                   href={`/account?tab=orders`}
                   className="bg-primary hover:bg-primary text-white px-8 py-4 rounded-lg font-semibold transition-colors inline-flex items-center justify-center whitespace-nowrap"
@@ -281,10 +330,22 @@ function OrderSuccessContent() {
                   <span>GH₵{order.shipping_total.toFixed(2)}</span>
                 </div>
 
-                <div className="flex justify-between text-xl font-bold text-gray-900 border-t border-gray-200 pt-2">
-                  <span>Total Paid</span>
+                <div className="flex justify-between text-base font-bold text-gray-900 border-t border-gray-200 pt-2">
+                  <span>Order Total</span>
                   <span>GH₵{order.total.toFixed(2)}</span>
                 </div>
+                {isDeposit && (
+                  <>
+                    <div className="flex justify-between text-sm text-emerald-700 mt-2">
+                      <span>Deposit paid</span>
+                      <span>GH₵{depositAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-amber-700 font-semibold">
+                      <span>Balance due on {pickupOrDelivery}</span>
+                      <span>GH₵{balanceDue.toFixed(2)}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendOrderConfirmation } from '@/lib/notifications';
+import { readPaymentPlan, computeDeposit, isPartialPlan } from '@/lib/payment-plan';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -60,9 +61,11 @@ async function reconcile(lookbackDays: number) {
 
     const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString();
 
+    // Pass 1: pending orders whose initial payment (deposit or full) may have
+    // been confirmed by Moolre but whose callback was missed.
     const { data: orders, error } = await supabase
         .from('orders')
-        .select('order_number, total, payment_status, metadata')
+        .select('id, order_number, total, payment_status, metadata')
         .eq('payment_status', 'pending')
         .gte('created_at', since);
 
@@ -76,12 +79,17 @@ async function reconcile(lookbackDays: number) {
         const ref = (order.metadata as any).moolre_externalref as string;
         const status = await checkMoolreStatus(ref);
 
+        const { plan, depositAmount: storedDeposit } = readPaymentPlan(order);
+        const isPartial = isPartialPlan(plan);
+        const { depositAmount } = computeDeposit(Number(order.total) || 0, plan, storedDeposit);
+        const expected = isPartial ? depositAmount : Number(order.total);
+
         // Only recover when Moolre confirms success and the amount matches.
-        if (status.paid && status.amount !== null && Math.abs(status.amount - Number(order.total)) <= 0.01) {
-            const { data: orderJson, error: rpcError } = await supabase.rpc('mark_order_paid', {
-                order_ref: order.order_number,
-                moolre_ref: status.txid || 'reconcile'
-            });
+        if (status.paid && status.amount !== null && Math.abs(status.amount - expected) <= 0.01) {
+            const rpcName = isPartial ? 'mark_order_partially_paid' : 'mark_order_paid';
+            const rpcArgs: Record<string, unknown> = { order_ref: order.order_number, moolre_ref: status.txid || 'reconcile' };
+            if (isPartial) rpcArgs.deposit_amount = depositAmount;
+            const { data: orderJson, error: rpcError } = await supabase.rpc(rpcName, rpcArgs);
 
             if (rpcError || !orderJson) {
                 stillPending.push(order.order_number);
@@ -102,14 +110,44 @@ async function reconcile(lookbackDays: number) {
                 await sendOrderConfirmation(orderJson);
             } catch { /* non-fatal */ }
 
-            recovered.push({ order_number: order.order_number, total: order.total, moolre_txid: status.txid });
+            recovered.push({ order_number: order.order_number, total: order.total, plan, moolre_txid: status.txid });
         } else {
             stillPending.push(order.order_number);
         }
     }
 
+    // Pass 2: partially_paid orders where a balance payment may have been made
+    // (latest attempt was a balance ref) but the callback was missed.
+    const { data: partialOrders } = await supabase
+        .from('orders')
+        .select('id, order_number, total, payment_status, metadata')
+        .eq('payment_status', 'partially_paid')
+        .gte('created_at', since);
+
+    const balanceCandidates = (partialOrders || []).filter(o => {
+        const ref = String((o.metadata as any)?.moolre_externalref || '');
+        return /-B\d+$/.test(ref) || String((o.metadata as any)?.payment_purpose || '').toLowerCase() === 'balance';
+    });
+
+    for (const order of balanceCandidates) {
+        const ref = (order.metadata as any).moolre_externalref as string;
+        if (!ref) continue;
+        const status = await checkMoolreStatus(ref);
+        const expectedBalance = Number((order.metadata as any)?.balance_due) || 0;
+        if (status.paid && status.amount !== null && expectedBalance > 0 && Math.abs(status.amount - expectedBalance) <= 0.01) {
+            const { data: orderJson, error: balErr } = await supabase.rpc('mark_balance_collected', {
+                p_order_id: order.id,
+                p_collected_by: null,
+                p_note: `Moolre balance payment ${status.txid || 'reconcile'}`
+            });
+            if (balErr || !orderJson) continue;
+            try { await sendOrderConfirmation(orderJson); } catch { /* non-fatal */ }
+            recovered.push({ order_number: order.order_number, total: order.total, plan: 'balance', moolre_txid: status.txid });
+        }
+    }
+
     return {
-        checked: candidates.length,
+        checked: candidates.length + balanceCandidates.length,
         recovered_count: recovered.length,
         recovered,
         still_pending_count: stillPending.length

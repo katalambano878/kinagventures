@@ -102,9 +102,11 @@ export default function AdminOrdersPage() {
       });
       setAvailableProducts(Array.from(productNames).sort());
 
-      // Separate confirmed (paid) from abandoned (pending payment)
-      const confirmedOrders = ordersData?.filter(o => o.payment_status === 'paid') || [];
-      const abandonedOrders = ordersData?.filter(o => o.payment_status !== 'paid') || [];
+      // Separate confirmed (paid or deposit-paid) from abandoned (pending payment).
+      // A partially_paid order has a real deposit, so it counts as confirmed.
+      const isConfirmedPayment = (s: string) => s === 'paid' || s === 'partially_paid';
+      const confirmedOrders = ordersData?.filter(o => isConfirmedPayment(o.payment_status)) || [];
+      const abandonedOrders = ordersData?.filter(o => !isConfirmedPayment(o.payment_status)) || [];
       
       setConfirmedCount(confirmedOrders.length);
       setAbandonedCount(abandonedOrders.length);
@@ -312,7 +314,7 @@ export default function AdminOrdersPage() {
     const orderId = (order.order_number || order.id).toLowerCase();
 
     // First filter by view tab (confirmed vs abandoned)
-    const isConfirmed = order.payment_status === 'paid';
+    const isConfirmed = order.payment_status === 'paid' || order.payment_status === 'partially_paid';
     const matchesViewTab = orderViewTab === 'confirmed' ? isConfirmed : !isConfirmed;
 
     const matchesSearch = orderId.includes(searchQuery.toLowerCase()) ||
@@ -599,6 +601,12 @@ export default function AdminOrdersPage() {
                         {orderViewTab === 'abandoned' && (
                           <span className={`text-xs mt-1 ${order.payment_status === 'failed' ? 'text-red-600' : 'text-amber-600'}`}>
                             {order.payment_status === 'failed' ? 'Failed' : 'Pending'}
+                          </span>
+                        )}
+                        {order.payment_status === 'partially_paid' && (
+                          <span className="text-xs mt-1 inline-flex items-center gap-1 text-orange-700 font-semibold">
+                            <i className="ri-wallet-3-line"></i>
+                            Deposit · Bal GH₵ {(Number(order.metadata?.balance_due) || Number(order.total) / 2).toFixed(2)}
                           </span>
                         )}
                       </div>

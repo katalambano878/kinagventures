@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { readPaymentPlan, computeDeposit } from '@/lib/payment-plan';
 
 export default function PaymentPage() {
   usePageTitle('Complete Payment');
@@ -45,8 +46,9 @@ export default function PaymentPage() {
 
         setOrder(data);
 
-        // If already paid, redirect to success page
-        if (data.payment_status === 'paid') {
+        // If already paid, or the deposit is already in (partially_paid),
+        // send them to the success page which shows the right next step.
+        if (data.payment_status === 'paid' || data.payment_status === 'partially_paid') {
           router.push(`/order-success?order=${data.order_number}`);
           return;
         }
@@ -144,6 +146,10 @@ export default function PaymentPage() {
 
   const shippingAddress = order?.shipping_address || {};
   const customerName = order?.metadata?.first_name || shippingAddress.firstName || 'Customer';
+  const { plan } = readPaymentPlan(order || {});
+  const isDeposit = plan === 'deposit_50' || plan === 'partial';
+  const { depositAmount, balanceDue } = computeDeposit(Number(order?.total) || 0, plan, order?.metadata?.deposit_amount);
+  const chargeNow = isDeposit ? depositAmount : (Number(order?.total) || 0);
 
   return (
     <main className="min-h-screen bg-gray-50 py-12 px-4">
@@ -185,6 +191,23 @@ export default function PaymentPage() {
             <span className="text-lg font-semibold text-gray-900">Total</span>
             <span className="text-2xl font-bold text-gray-700">GH₵ {order?.total?.toFixed(2)}</span>
           </div>
+
+          {isDeposit && (
+            <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+              <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm">
+                <i className="ri-wallet-3-line text-base"></i>
+                <span>50% Deposit Plan</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-700">
+                <span>Pay now (50%)</span>
+                <span className="font-semibold text-emerald-700">GH₵ {depositAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-gray-700">
+                <span>Balance on delivery/pickup</span>
+                <span className="font-semibold text-amber-700">GH₵ {balanceDue.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Payment Status */}
@@ -251,9 +274,11 @@ export default function PaymentPage() {
           ) : (
             <>
               <i className="ri-secure-payment-line mr-2"></i>
-              {order?.payment_status === 'failed'
-                ? `Retry Payment (GH₵ ${order?.total?.toFixed(2)})`
-                : `Pay GH₵ ${order?.total?.toFixed(2)} with Mobile Money`}
+              {isDeposit
+                ? `Pay 50% Deposit · GH₵ ${chargeNow.toFixed(2)}`
+                : order?.payment_status === 'failed'
+                  ? `Retry Payment (GH₵ ${order?.total?.toFixed(2)})`
+                  : `Pay GH₵ ${order?.total?.toFixed(2)} with Mobile Money`}
             </>
           )}
         </button>

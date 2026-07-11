@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import FraudDetectionAlert from '@/components/FraudDetectionAlert';
+import { readPaymentPlan } from '@/lib/payment-plan';
 
 interface OrderDetailClientProps {
   orderId: string;
@@ -199,6 +200,37 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
   const [resendingNotification, setResendingNotification] = useState(false);
   const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [collectingBalance, setCollectingBalance] = useState(false);
+
+  // For a 50% deposit order, record that the outstanding balance has been
+  // collected (cash / mobile money on delivery or pickup). Flips the order to
+  // fully paid via the mark_balance_collected RPC.
+  const handleCollectBalance = async () => {
+    if (!order) return;
+    const balanceForConfirm = Number(order.metadata?.balance_due) || 0;
+    const ok = window.confirm(
+      `Confirm you've collected GH₵${balanceForConfirm.toFixed(2)} from the customer on ${order.shipping_method === 'pickup' ? 'pickup' : 'delivery'}?\n\nThis marks the order as fully paid.`
+    );
+    if (!ok) return;
+    setCollectingBalance(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id || null;
+      const { error: rpcError } = await supabase.rpc('mark_balance_collected', {
+        p_order_id: order.id,
+        p_collected_by: userId,
+        p_note: null,
+      });
+      if (rpcError) throw rpcError;
+      await fetchOrderDetails();
+      alert('Balance recorded. Order marked as fully paid.');
+    } catch (err: any) {
+      console.error('Collect balance failed:', err);
+      alert(`Failed to record balance: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setCollectingBalance(false);
+    }
+  };
 
   // Ask Moolre's API directly whether this order's payment went through.
   // If confirmed, the verify endpoint marks the order as paid and triggers
@@ -341,6 +373,9 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
   if (error || !order) return <div className="p-8 text-center text-red-500">{error || 'Order not found'}</div>;
 
   const currentStatus = order.status || 'pending';
+  const { plan: orderPlan, depositAmount: orderDeposit, balanceDue: orderBalance } = readPaymentPlan(order);
+  const isDepositOrder = orderPlan === 'deposit_50' || orderPlan === 'partial';
+  const isPartiallyPaid = order.payment_status === 'partially_paid';
   const shippingAddress = order.shipping_address || {};
   const customerName = (shippingAddress.firstName && shippingAddress.lastName)
     ? `${shippingAddress.firstName.trim()} ${shippingAddress.lastName.trim()}`
@@ -616,9 +651,11 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                     ? 'bg-green-100 text-green-700 border-green-200'
                     : order.payment_status === 'failed'
                     ? 'bg-red-100 text-red-700 border-red-200'
+                    : isPartiallyPaid
+                    ? 'bg-orange-100 text-orange-700 border-orange-200'
                     : 'bg-amber-100 text-amber-700 border-amber-200'
                 }`}>
-                  {(order.payment_status || 'pending').toUpperCase()}
+                  {isPartiallyPaid ? 'DEPOSIT PAID' : (order.payment_status || 'pending').toUpperCase()}
                 </span>
               </div>
               <div className="flex items-center justify-between mb-3">
@@ -629,6 +666,49 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                 <span className="text-sm text-gray-600">Amount</span>
                 <span className="text-sm font-bold text-gray-900">GH₵ {Number(order.total).toFixed(2)}</span>
               </div>
+
+              {isDepositOrder && (
+                <div className="mt-2 mb-3 p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                  <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm">
+                    <i className="ri-wallet-3-line"></i>
+                    <span>50% Deposit Plan</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-700">Deposit paid</span>
+                    <span className="font-semibold text-emerald-700">GH₵ {orderDeposit.toFixed(2)}</span>
+                  </div>
+                  {isPartiallyPaid ? (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-700">Balance to collect</span>
+                      <span className="font-semibold text-amber-700">GH₵ {orderBalance.toFixed(2)}</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-700">Balance collected</span>
+                      <span className="font-semibold text-emerald-700">GH₵ {orderBalance.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {order.metadata?.deposit_paid_at && (
+                    <p className="text-xs text-gray-500 pt-1">Deposit at: {new Date(order.metadata.deposit_paid_at).toLocaleString('en-GB')}</p>
+                  )}
+                  {order.metadata?.balance_collected_at && (
+                    <p className="text-xs text-gray-500">Balance at: {new Date(order.metadata.balance_collected_at).toLocaleString('en-GB')}</p>
+                  )}
+                  {isPartiallyPaid && (
+                    <button
+                      onClick={handleCollectBalance}
+                      disabled={collectingBalance}
+                      className="w-full mt-2 bg-amber-600 hover:bg-amber-700 text-white py-2.5 rounded-lg font-semibold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {collectingBalance ? (
+                        <><i className="ri-loader-4-line animate-spin"></i> Recording...</>
+                      ) : (
+                        <><i className="ri-hand-coin-line"></i> Mark Balance Collected (GH₵ {orderBalance.toFixed(2)})</>
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
               {order.metadata?.moolre_externalref && (
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm text-gray-600">Moolre Ref</span>
@@ -646,7 +726,7 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                 </div>
               )}
 
-              {order.payment_status !== 'paid' && (
+              {order.payment_status !== 'paid' && !isPartiallyPaid && (
                 <div className="space-y-2 mt-4 pt-4 border-t border-gray-100">
                   <button
                     onClick={handleVerifyWithMoolre}

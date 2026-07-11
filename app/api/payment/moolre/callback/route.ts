@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendOrderConfirmation } from '@/lib/notifications';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
+import { readPaymentPlan, computeDeposit, isPartialPlan } from '@/lib/payment-plan';
 
 // Use Service Role Key for admin-level updates (marking paid)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -89,11 +90,18 @@ export async function POST(req: Request) {
             body.orderRef || 
             body.external_reference;
 
-        // Strip retry suffix (e.g., "ORD-123-R1770000000" -> "ORD-123")
-        // Also check metadata for the original order number
+        // Strip retry/balance suffix (e.g., "ORD-123-R1770000000" or
+        // "ORD-123-B1770000000" -> "ORD-123"). Also check metadata for the
+        // original order number.
         const merchantOrderRef = rawExternalRef 
-            ? rawExternalRef.replace(/-R\d+$/, '') 
+            ? rawExternalRef.replace(/-[RB]\d+$/, '') 
             : (data.metadata?.original_order_number || body.metadata?.original_order_number);
+
+        // A "-B" prefixed external ref (or explicit metadata flag) means this
+        // payment is settling the outstanding balance on a deposit order.
+        const isBalancePayment =
+            /-B\d+$/.test(String(rawExternalRef || '')) ||
+            String(data.metadata?.payment_purpose || body.metadata?.payment_purpose || '').toLowerCase() === 'balance';
 
         // Moolre's transaction reference
         const moolreReference = 
@@ -148,7 +156,7 @@ export async function POST(req: Request) {
             // Check if order exists
             const { data: existingOrder, error: fetchError } = await supabase
                 .from('orders')
-                .select('id, order_number, payment_status, total')
+                .select('id, order_number, payment_status, total, metadata')
                 .eq('order_number', merchantOrderRef)
                 .single();
 
@@ -157,28 +165,58 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
             }
 
-            // Already paid - idempotent
+            // Already fully paid - idempotent
             if (existingOrder.payment_status === 'paid') {
                 console.log('[Callback] Order already paid, skipping:', merchantOrderRef);
                 return NextResponse.json({ success: true, message: 'Order already processed' });
             }
 
-            // Verify amount if available
+            const { plan, depositAmount: storedDeposit } = readPaymentPlan(existingOrder);
+            const isPartial = isPartialPlan(plan);
+            const { depositAmount, balanceDue } = computeDeposit(Number(existingOrder.total) || 0, plan, storedDeposit);
             const callbackAmount = data.amount ? parseFloat(data.amount) : (body.amount ? parseFloat(body.amount) : null);
-            if (callbackAmount && Math.abs(callbackAmount - Number(existingOrder.total)) > 0.01) {
-                console.warn('[Callback] Amount mismatch! Expected:', existingOrder.total, 'Got:', callbackAmount);
-            }
 
-            // Mark order as paid via RPC
-            const { data: orderJson, error: updateError } = await supabase
-                .rpc('mark_order_paid', {
-                    order_ref: merchantOrderRef,
-                    moolre_ref: String(moolreReference)
+            let orderJson: any = null;
+
+            if (isBalancePayment) {
+                // Settling the remaining balance on a deposit order.
+                if (existingOrder.payment_status !== 'partially_paid') {
+                    console.warn('[Callback] Balance payment for non-partial order:', merchantOrderRef, '| status:', existingOrder.payment_status);
+                    return NextResponse.json({ success: true, message: 'No balance outstanding' });
+                }
+                const expectedBalance = Number((existingOrder.metadata as any)?.balance_due) || balanceDue;
+                if (callbackAmount !== null && Math.abs(callbackAmount - expectedBalance) > 0.01) {
+                    console.warn('[Callback] Balance amount mismatch! Expected:', expectedBalance, 'Got:', callbackAmount);
+                }
+                const { data: rpcJson, error: balErr } = await supabase.rpc('mark_balance_collected', {
+                    p_order_id: existingOrder.id,
+                    p_collected_by: null,
+                    p_note: `Moolre balance payment ${moolreReference}`
                 });
-
-            if (updateError) {
-                console.error('[Callback] RPC Error:', updateError.message);
-                return NextResponse.json({ success: false, message: 'Database update failed' }, { status: 500 });
+                if (balErr) {
+                    console.error('[Callback] mark_balance_collected error:', balErr.message);
+                    return NextResponse.json({ success: false, message: 'Database update failed' }, { status: 500 });
+                }
+                orderJson = rpcJson;
+            } else {
+                // Initial payment: deposit (partial) or full.
+                if (existingOrder.payment_status === 'partially_paid' && isPartial) {
+                    console.log('[Callback] Deposit already recorded, skipping:', merchantOrderRef);
+                    return NextResponse.json({ success: true, message: 'Deposit already processed' });
+                }
+                const expectedAmount = isPartial ? depositAmount : Number(existingOrder.total);
+                if (callbackAmount && Math.abs(callbackAmount - expectedAmount) > 0.01) {
+                    console.warn('[Callback] Amount mismatch! Expected:', expectedAmount, 'Got:', callbackAmount);
+                }
+                const rpcName = isPartial ? 'mark_order_partially_paid' : 'mark_order_paid';
+                const rpcArgs: Record<string, unknown> = { order_ref: merchantOrderRef, moolre_ref: String(moolreReference) };
+                if (isPartial) rpcArgs.deposit_amount = depositAmount;
+                const { data: rpcJson, error: updateError } = await supabase.rpc(rpcName, rpcArgs);
+                if (updateError) {
+                    console.error('[Callback] RPC Error:', updateError.message);
+                    return NextResponse.json({ success: false, message: 'Database update failed' }, { status: 500 });
+                }
+                orderJson = rpcJson;
             }
 
             if (!orderJson) {
@@ -188,9 +226,10 @@ export async function POST(req: Request) {
 
             console.log('[Callback] Order updated! ID:', orderJson.id, '| Status:', orderJson.status);
 
-            // Update customer stats
+            // Update customer stats (only on the initial payment; a later
+            // balance payment must not double-count the order total).
             try {
-                if (orderJson.email) {
+                if (orderJson.email && !isBalancePayment) {
                     await supabase.rpc('update_customer_stats', {
                         p_customer_email: orderJson.email,
                         p_order_total: orderJson.total

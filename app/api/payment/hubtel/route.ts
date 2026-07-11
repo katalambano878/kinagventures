@@ -179,7 +179,7 @@ export async function POST(req: Request) {
             const remaining = items.filter((it) => !removedItems.length || !removedItems.includes(it.product_name));
             const allPreorder = remaining.length > 0 && remaining.every((it) => {
                 const product = Array.isArray(it.products) ? it.products[0] : it.products;
-                return !!product?.metadata?.preorder_shipping;
+                return !!(product?.metadata?.is_preorder ?? product?.metadata?.preorder_shipping);
             });
             if (!allPreorder) plan = 'full';
         }

@@ -110,7 +110,7 @@ export default function CheckoutPage() {
       const { data } = await supabase.from('products').select('id, metadata').in('id', ids);
       if (!active) return;
       const map: Record<string, boolean> = {};
-      (data || []).forEach((p: any) => { map[p.id] = !!p.metadata?.preorder_shipping; });
+      (data || []).forEach((p: any) => { map[p.id] = !!(p.metadata?.is_preorder ?? p.metadata?.preorder_shipping); });
       setPreorderMap(map);
     })();
     return () => { active = false; };

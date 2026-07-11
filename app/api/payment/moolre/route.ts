@@ -5,8 +5,8 @@ import { readPaymentPlan, computeDeposit, isPartialPlan, type PaymentPlan } from
 
 /**
  * Deposit is pre-order-only. Returns true only when every product in the order
- * has metadata.preorder_shipping set. Used to stop a tampered client from
- * paying half on a non-pre-order order.
+ * is flagged as pre-order (metadata.is_preorder, or legacy preorder_shipping).
+ * Used to stop a tampered client from paying half on a non-pre-order order.
  */
 async function orderIsAllPreorder(sb: any, orderId: string): Promise<boolean> {
     const { data: items } = await sb.from('order_items').select('product_id').eq('order_id', orderId);
@@ -14,7 +14,7 @@ async function orderIsAllPreorder(sb: any, orderId: string): Promise<boolean> {
     if (productIds.length === 0) return false;
     const { data: products } = await sb.from('products').select('id, metadata').in('id', productIds);
     if (!products || products.length !== productIds.length) return false;
-    return products.every((p: any) => !!p.metadata?.preorder_shipping);
+    return products.every((p: any) => !!(p.metadata?.is_preorder ?? p.metadata?.preorder_shipping));
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;

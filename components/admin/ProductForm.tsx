@@ -26,6 +26,10 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
     const [description, setDescription] = useState(initialData?.description || '');
     const [status, setStatus] = useState(initialData?.status || 'Active');
     const [featured, setFeatured] = useState(initialData?.featured || false);
+    // Fall back to preorder_shipping for products saved before the toggle existed.
+    const [isPreorder, setIsPreorder] = useState<boolean>(
+        Boolean(initialData?.metadata?.is_preorder ?? initialData?.metadata?.preorder_shipping)
+    );
     const [preorderShipping, setPreorderShipping] = useState(initialData?.metadata?.preorder_shipping || '');
     const [activeTab, setActiveTab] = useState('general');
 
@@ -373,7 +377,8 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                 tags: (keywords as string).split(',').map((k: string) => k.trim()).filter(Boolean),
                 metadata: {
                     low_stock_threshold: parseInt(lowStockThreshold) || 5,
-                    preorder_shipping: preorderShipping.trim() || null,
+                    is_preorder: isPreorder,
+                    preorder_shipping: isPreorder ? (preorderShipping.trim() || null) : null,
                     option_names: activeGroups.map((g, i) => g.name || `Option ${i + 1}`),
                     product_options: Object.fromEntries(
                         enabledDefaults.map(d => [d.key, {
@@ -612,18 +617,56 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                 </label>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-900 mb-2">
-                                    Pre-order / Estimated Shipping
-                                </label>
-                                <input
-                                    type="text"
-                                    value={preorderShipping}
-                                    onChange={(e) => setPreorderShipping(e.target.value)}
-                                    placeholder="e.g., Ships in 14 days, Available March 15"
-                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-600 focus:border-transparent transition-all"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">Leave empty if product ships immediately. Otherwise, enter estimated shipping time.</p>
+                            <div className="rounded-xl border border-gray-200 bg-white p-4">
+                                <div className="flex items-start gap-3">
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        aria-checked={isPreorder}
+                                        onClick={() => setIsPreorder((v) => !v)}
+                                        className={`mt-0.5 relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${isPreorder ? 'bg-amber-500' : 'bg-gray-300'}`}
+                                    >
+                                        <span
+                                            aria-hidden="true"
+                                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isPreorder ? 'translate-x-5' : 'translate-x-0'}`}
+                                        />
+                                    </button>
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <label className="text-gray-900 font-medium cursor-pointer" onClick={() => setIsPreorder((v) => !v)}>
+                                                Pre-order
+                                            </label>
+                                            {isPreorder ? (
+                                                <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded">
+                                                    <i className="ri-time-line" /> Preorder
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded">
+                                                    <i className="ri-check-line" /> Available
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-sm text-gray-600 mt-1">
+                                            When turned on, this product is marked as a pre-order. A <span className="font-semibold text-amber-700">Preorder</span> badge shows at the top of the product card; otherwise customers see an <span className="font-semibold text-emerald-700">Available</span> badge.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {isPreorder && (
+                                    <div className="mt-4 pl-14">
+                                        <label className="block text-sm font-semibold text-gray-900 mb-2">
+                                            Estimated ship / availability
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={preorderShipping}
+                                            onChange={(e) => setPreorderShipping(e.target.value)}
+                                            placeholder="e.g., Ships in 14 days, Available March 15"
+                                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">Optional. Shown on the product card and order summary so customers know when to expect the item.</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

@@ -190,7 +190,9 @@ function ShopContent() {
               category: p.categories?.name,
               hasVariants,
               minVariantPrice,
-              colorVariants
+              colorVariants,
+              isPreorder: !!(p.metadata?.is_preorder ?? p.metadata?.preorder_shipping),
+              preorderEta: p.metadata?.preorder_shipping || undefined
             };
           });
           setProducts(formattedProducts);

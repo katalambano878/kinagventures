@@ -445,6 +445,8 @@ export default function Home() {
                     minVariantPrice={minVariantPrice}
                     colorVariants={colorVariants}
                     brand={product.brand || product.vendor}
+                    isPreorder={!!(product.metadata?.is_preorder ?? product.metadata?.preorder_shipping)}
+                    preorderEta={product.metadata?.preorder_shipping || undefined}
                   />
                 );
               })}

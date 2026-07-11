@@ -55,6 +55,10 @@ interface ProductCardProps {
   minVariantPrice?: number;
   colorVariants?: ColorVariant[];
   brand?: string;
+  /** When true, show a Preorder pill at the top instead of Available */
+  isPreorder?: boolean;
+  /** Optional ETA/ship-by text shown under the Preorder pill (e.g. "Ships in 14 days") */
+  preorderEta?: string;
 }
 
 export default function ProductCard({
@@ -74,6 +78,8 @@ export default function ProductCard({
   minVariantPrice,
   colorVariants = [],
   brand,
+  isPreorder = false,
+  preorderEta,
 }: ProductCardProps) {
   const { addToCart }   = useCart();
   const { getSetting }  = useCMS();
@@ -132,8 +138,24 @@ export default function ProductCard({
           <i className={`${wishlisted ? 'ri-heart-fill text-red-500' : 'ri-heart-line text-gray-600'} text-sm`} />
         </button>
 
-        {/* Badges */}
-        <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">
+        {/* Badges: Preorder (amber) beats Available (emerald); discount/custom badge stacks below */}
+        <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5 z-10">
+          {isPreorder ? (
+            <>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-500 text-white text-[10px] font-bold tracking-widest uppercase rounded-full shadow-sm">
+                <i className="ri-time-line" /> Preorder
+              </span>
+              {preorderEta && (
+                <span className="px-2 py-0.5 bg-white/95 backdrop-blur text-amber-800 text-[10px] font-semibold rounded-full shadow-sm max-w-[160px] truncate">
+                  {preorderEta}
+                </span>
+              )}
+            </>
+          ) : inStock ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-600 text-white text-[10px] font-bold tracking-widest uppercase rounded-full shadow-sm">
+              <i className="ri-check-line" /> Available
+            </span>
+          ) : null}
           {discount > 0 ? (
             <span className="px-2.5 py-0.5 bg-red-500 text-white text-[10px] font-bold tracking-wide rounded-full shadow-sm">
               -{discount}%
@@ -145,8 +167,8 @@ export default function ProductCard({
           ) : null}
         </div>
 
-        {/* Out of stock overlay */}
-        {!inStock && (
+        {/* Out of stock overlay (pre-order items are sold before stock arrives) */}
+        {!inStock && !isPreorder && (
           <div className="absolute inset-0 bg-white/55 backdrop-blur-[2px] flex items-center justify-center">
             <span className="px-4 py-1.5 bg-white border border-gray-200 text-gray-600 text-xs font-semibold rounded-full shadow-sm tracking-wide">
               Out of Stock

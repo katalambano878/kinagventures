@@ -62,7 +62,7 @@ function CompletePaymentContent() {
         setPayingRef(order.order_number);
         setError(null);
         try {
-            const res = await fetch('/api/payment/moolre', {
+            const res = await fetch('/api/payment/hubtel', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ orderId: order.order_number, purpose: 'balance' }),

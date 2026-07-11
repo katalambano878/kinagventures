@@ -13,7 +13,7 @@ export default function PaymentPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const orderId = params?.orderId ?? '';
-  const wasCanceled = searchParams?.get('canceled') === '1';
+  const wasCanceled = searchParams?.get('canceled') === '1' || searchParams?.get('cancelled') === 'true';
 
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -77,15 +77,18 @@ export default function PaymentPage() {
     setProcessing(true);
     setError(null);
 
-    const url = '/api/payment/moolre';
+    // Balance top-ups on a deposit order settle the remainder online; the
+    // server re-reads the authoritative amount/email so we only send orderId.
+    const isBalance = order.payment_status === 'partially_paid';
+    const url = '/api/payment/hubtel';
     try {
       const paymentRes = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderId: order.order_number,
-          amount: order.total,
           customerEmail: order.email,
+          ...(isBalance ? { purpose: 'balance' } : {}),
         }),
       });
 

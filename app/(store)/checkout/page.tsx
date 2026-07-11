@@ -56,7 +56,7 @@ export default function CheckoutPage() {
   ];
 
   const [deliveryMethod, setDeliveryMethod] = useState('pickup');
-  const [paymentMethod] = useState<'moolre'>('moolre');
+  const [paymentMethod] = useState<'hubtel'>('hubtel');
   const [errors, setErrors] = useState<any>({});
 
   // Part-payment (50% deposit) — only offered when every item in the cart is a
@@ -281,18 +281,17 @@ export default function CheckoutPage() {
       });
 
       // 4. Handle Payment Redirects or Completion
-      if (paymentMethod === 'moolre') {
+      if (paymentMethod === 'hubtel') {
         try {
-          const paymentRes = await fetch('/api/payment/moolre', {
+          const paymentRes = await fetch('/api/payment/hubtel', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               orderId: orderNumber,
-              amount: total,
               customerEmail: shippingData.email,
             }),
           });
-          let paymentResult: { success?: boolean; message?: string; url?: string };
+          let paymentResult: { success?: boolean; message?: string; url?: string; removedItems?: string[] };
           try {
             paymentResult = await paymentRes.json();
           } catch {
@@ -303,6 +302,9 @@ export default function CheckoutPage() {
           }
           if (!paymentResult.url) {
             throw new Error('No payment link received. Please try again or contact support.');
+          }
+          if (paymentResult.removedItems && paymentResult.removedItems.length > 0) {
+            alert(`Some items were removed because they are out of stock and your total was updated:\n\n- ${paymentResult.removedItems.join('\n- ')}`);
           }
           clearCart();
           window.location.href = paymentResult.url;
@@ -629,12 +631,12 @@ export default function CheckoutPage() {
                   </div>
 
                   <h2 className="text-xl font-bold text-gray-900 mt-8 mb-4">Payment Method</h2>
-                  <p className="text-sm text-gray-600 mb-4">Select how you’d like to pay. Pay with Mobile Money (MTN, Vodafone, AirtelTigo).</p>
+                  <p className="text-sm text-gray-600 mb-4">You’ll be taken to Hubtel’s secure checkout to pay by Mobile Money or bank card.</p>
                   <div className="flex items-center gap-3 p-4 border-2 border-gray-900 bg-gray-50 rounded-xl">
-                    <i className="ri-smartphone-line text-xl text-gray-600 flex-shrink-0"></i>
+                    <i className="ri-secure-payment-line text-xl text-gray-600 flex-shrink-0"></i>
                     <div className="min-w-0">
-                      <p className="font-semibold text-gray-900">Mobile Money</p>
-                      <p className="text-xs text-gray-600 truncate">MTN, Vodafone, AirtelTigo</p>
+                      <p className="font-semibold text-gray-900">Mobile Money &amp; Card</p>
+                      <p className="text-xs text-gray-600 truncate">Secured by Hubtel · MTN, Telecel, AirtelTigo, Visa/Mastercard</p>
                     </div>
                   </div>
 
@@ -700,7 +702,7 @@ export default function CheckoutPage() {
                       ) : paymentPlan === 'deposit_50' ? (
                         `Pay 50% Deposit · GH₵ ${upfrontAmount.toFixed(2)}`
                       ) : (
-                        'Pay with Mobile Money'
+                        'Continue to Payment'
                       )}
                     </button>
                   </div>

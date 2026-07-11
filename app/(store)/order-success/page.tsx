@@ -76,15 +76,21 @@ function OrderSuccessContent() {
       return;
     }
 
-    const paymentMethod = initialOrder?.payment_method || (reference ? 'paystack' : 'moolre');
+    const paymentMethod = initialOrder?.payment_method || (reference ? 'paystack' : 'hubtel');
 
     try {
-      const url = paymentMethod === 'paystack'
-        ? '/api/payment/paystack/verify'
-        : '/api/payment/moolre/verify';
-      const body = paymentMethod === 'paystack'
-        ? JSON.stringify({ orderNumber: orderNum, reference: reference || orderNum })
-        : JSON.stringify({ orderNumber: orderNum, fromRedirect: true, purpose: purpose || undefined });
+      let url: string;
+      let body: string;
+      if (paymentMethod === 'paystack') {
+        url = '/api/payment/paystack/verify';
+        body = JSON.stringify({ orderNumber: orderNum, reference: reference || orderNum });
+      } else if (paymentMethod === 'hubtel') {
+        url = '/api/payment/hubtel/verify';
+        body = JSON.stringify({ orderNumber: orderNum, email: initialOrder?.email || refreshed?.email });
+      } else {
+        url = '/api/payment/moolre/verify';
+        body = JSON.stringify({ orderNumber: orderNum, fromRedirect: true, purpose: purpose || undefined });
+      }
 
       const res = await fetch(url, {
         method: 'POST',

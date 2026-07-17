@@ -65,11 +65,52 @@ export default function AdminLayout({
       setUser(session.user);
       setUserRole(profile.role);
       setIsAuthenticated(true);
+      // Cookie lets the maintenance-mode middleware wave admins through.
+      document.cookie = 'admin_session=1; path=/; max-age=86400; SameSite=Lax';
       setIsLoading(false);
     }
 
     checkAuth();
   }, [pathname, router]);
+
+  // Maintenance mode state (toggle lives in the header)
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+  const [maintenanceToggling, setMaintenanceToggling] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    supabase
+      .from('store_settings')
+      .select('value')
+      .eq('key', 'maintenance_mode')
+      .single()
+      .then(({ data }) => {
+        const raw = data?.value as unknown;
+        setMaintenanceEnabled(raw === true || raw === 'true' || raw === '"true"');
+      });
+  }, [isAuthenticated]);
+
+  const handleToggleMaintenance = async () => {
+    if (userRole !== 'admin') {
+      alert('Only an admin can toggle maintenance mode.');
+      return;
+    }
+    const next = !maintenanceEnabled;
+    setMaintenanceToggling(true);
+    try {
+      const { error } = await supabase.from('store_settings').upsert(
+        { key: 'maintenance_mode', value: next ? 'true' : 'false', updated_at: new Date().toISOString() },
+        { onConflict: 'key' }
+      );
+      if (error) throw error;
+      setMaintenanceEnabled(next);
+    } catch (err) {
+      console.error('Failed to toggle maintenance:', err);
+      alert('Failed to update. Please try again.');
+    } finally {
+      setMaintenanceToggling(false);
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -129,6 +170,7 @@ export default function AdminLayout({
   }, []);
 
   const handleLogout = async () => {
+    document.cookie = 'admin_session=; path=/; max-age=0';
     await supabase.auth.signOut();
     router.push('/admin/login');
   };
@@ -335,6 +377,21 @@ export default function AdminLayout({
             </button>
 
             <div className="flex items-center space-x-2 lg:space-x-4">
+              {userRole === 'admin' && (
+                <button
+                  onClick={handleToggleMaintenance}
+                  disabled={maintenanceToggling}
+                  title={maintenanceEnabled ? 'Maintenance mode is ON — customers see the maintenance page. Click to go live.' : 'Store is live. Click to enable maintenance mode.'}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer disabled:opacity-60 ${
+                    maintenanceEnabled
+                      ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <i className={`${maintenanceToggling ? 'ri-loader-4-line animate-spin' : 'ri-tools-line'} text-base`}></i>
+                  <span className="hidden sm:inline">{maintenanceEnabled ? 'Maintenance ON' : 'Maintenance'}</span>
+                </button>
+              )}
               <button className="relative w-10 h-10 flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer">
                 <i className="ri-notification-3-line text-xl"></i>
                 <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>

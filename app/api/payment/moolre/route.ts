@@ -1,6 +1,6 @@
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { NextResponse } from 'next/server';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
-import { createClient } from '@supabase/supabase-js';
 import { readPaymentPlan, computeDeposit, isPartialPlan, type PaymentPlan } from '@/lib/payment-plan';
 
 /**
@@ -17,9 +17,6 @@ async function orderIsAllPreorder(sb: any, orderId: string): Promise<boolean> {
     return products.every((p: any) => !!(p.metadata?.is_preorder ?? p.metadata?.preorder_shipping));
 }
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(req: Request) {
     try {
@@ -59,7 +56,7 @@ export async function POST(req: Request) {
         const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || requestUrl.origin).replace(/\/+$/, '');
 
         // Fetch the order — the SERVER decides the amount (never trust the client).
-        const { data: existingOrder, error: orderFetchError } = await supabase
+        const { data: existingOrder, error: orderFetchError } = await supabaseAdmin
             .from('orders')
             .select('id, order_number, payment_status, total, metadata')
             .eq('order_number', orderId)
@@ -79,7 +76,7 @@ export async function POST(req: Request) {
         // when every item is a pre-order; otherwise downgrade to full payment.
         let plan: PaymentPlan = readPaymentPlan(existingOrder).plan;
         if (isPartialPlan(plan)) {
-            const eligible = await orderIsAllPreorder(supabase, existingOrder.id as string);
+            const eligible = await orderIsAllPreorder(supabaseAdmin, existingOrder.id as string);
             if (!eligible) plan = 'full';
         }
         const { depositAmount, balanceDue } = computeDeposit(orderTotal, plan);
@@ -129,7 +126,7 @@ export async function POST(req: Request) {
         // Don't reset a partially_paid order back to pending when paying the balance.
         const nextPaymentStatus = purpose === 'balance' ? existingOrder.payment_status : 'pending';
 
-        const { error: orderUpdateError } = await supabase
+        const { error: orderUpdateError } = await supabaseAdmin
             .from('orders')
             .update({
                 payment_status: nextPaymentStatus,

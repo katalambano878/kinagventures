@@ -1,11 +1,8 @@
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { sendOrderConfirmation } from '@/lib/notifications';
 import { readPaymentPlan, computeDeposit, isPartialPlan } from '@/lib/payment-plan';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 /**
  * Payment verification endpoint.
@@ -28,7 +25,7 @@ export async function POST(req: Request) {
         console.log('[Verify] Checking payment for:', orderNumber, '| fromRedirect:', fromRedirect);
 
         // 1. Check current order status
-        const { data: order, error: fetchError } = await supabase
+        const { data: order, error: fetchError } = await supabaseAdmin
             .from('orders')
             .select('id, order_number, payment_status, status, total, email, phone, shipping_address, metadata')
             .eq('order_number', orderNumber)
@@ -159,7 +156,7 @@ export async function POST(req: Request) {
         let resultPaymentStatus: 'paid' | 'partially_paid' = 'paid';
 
         if (isBalance) {
-            const { data: rpcJson, error: balErr } = await supabase.rpc('mark_balance_collected', {
+            const { data: rpcJson, error: balErr } = await supabaseAdmin.rpc('mark_balance_collected', {
                 p_order_id: order.id,
                 p_collected_by: null,
                 p_note: `Moolre balance payment ${moolreRef}`
@@ -171,7 +168,7 @@ export async function POST(req: Request) {
             orderJson = rpcJson;
             resultPaymentStatus = 'paid';
         } else if (isPartial) {
-            const { data: rpcJson, error: updateError } = await supabase.rpc('mark_order_partially_paid', {
+            const { data: rpcJson, error: updateError } = await supabaseAdmin.rpc('mark_order_partially_paid', {
                 order_ref: orderNumber,
                 moolre_ref: moolreRef,
                 deposit_amount: depositAmount
@@ -183,7 +180,7 @@ export async function POST(req: Request) {
             orderJson = rpcJson;
             resultPaymentStatus = 'partially_paid';
         } else {
-            const { data: rpcJson, error: updateError } = await supabase.rpc('mark_order_paid', {
+            const { data: rpcJson, error: updateError } = await supabaseAdmin.rpc('mark_order_paid', {
                 order_ref: orderNumber,
                 moolre_ref: moolreRef
             });
@@ -200,7 +197,7 @@ export async function POST(req: Request) {
         // 6. Update customer stats (skip on balance to avoid double-counting).
         if (orderJson?.email && !isBalance) {
             try {
-                await supabase.rpc('update_customer_stats', {
+                await supabaseAdmin.rpc('update_customer_stats', {
                     p_customer_email: orderJson.email,
                     p_order_total: orderJson.total
                 });

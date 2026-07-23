@@ -1,5 +1,5 @@
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { computeDeposit, isPartialPlan, readPaymentPlan, type PaymentPlan } from '@/lib/payment-plan';
 import {
@@ -9,9 +9,6 @@ import {
     normalizeGhPhone,
 } from '@/lib/hubtel';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 const isUUID = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -54,7 +51,7 @@ export async function POST(req: Request) {
 
         // Order + items + authoritative product/variant prices & stock in one query.
         const orderSelect = 'id, order_number, total, subtotal, shipping_total, tax_total, email, phone, payment_status, shipping_address, shipping_method, metadata, order_items(id, product_id, variant_id, quantity, unit_price, product_name, products(price, quantity, status, metadata), product_variants(price, quantity))';
-        const q = supabase.from('orders').select(orderSelect);
+        const q = supabaseAdmin.from('orders').select(orderSelect);
         const { data: order, error: orderError } = isUUID(orderId)
             ? await q.eq('id', orderId).single()
             : await q.eq('order_number', orderId).single();
@@ -130,7 +127,7 @@ export async function POST(req: Request) {
                     .filter((it) => !keep.some((k) => k.id === it.id))
                     .map((it) => it.id);
                 if (removedIds.length > 0) {
-                    await supabase.from('order_items').delete().in('id', removedIds);
+                    await supabaseAdmin.from('order_items').delete().in('id', removedIds);
                 }
             }
 
@@ -141,7 +138,7 @@ export async function POST(req: Request) {
             // Update any line whose stored unit price drifted.
             for (const k of keep) {
                 if (Math.abs(k.authPrice - k.unit_price) > 0.01) {
-                    await supabase.from('order_items')
+                    await supabaseAdmin.from('order_items')
                         .update({ unit_price: k.authPrice, total_price: round2(k.authPrice * k.qty) })
                         .eq('id', k.id);
                 }
@@ -159,7 +156,7 @@ export async function POST(req: Request) {
                 if (removedItems.length > 0) {
                     repricedMeta.auto_removed_items = removedItems;
                 }
-                await supabase.from('orders')
+                await supabaseAdmin.from('orders')
                     .update({ subtotal: recomputedSubtotal, total: recomputedTotal, metadata: repricedMeta })
                     .eq('id', order.id);
                 order.metadata = repricedMeta;
@@ -234,7 +231,7 @@ export async function POST(req: Request) {
                 ? { payment_plan: plan, deposit_amount: depositAmount, balance_due: balanceDue }
                 : {}),
         };
-        await supabase.from('orders')
+        await supabaseAdmin.from('orders')
             .update({ payment_method: 'hubtel', metadata: preMeta })
             .eq('id', order.id);
 
@@ -265,7 +262,7 @@ export async function POST(req: Request) {
 
         // Stamp the checkout id (fire-and-forget — not needed before we respond).
         if (checkoutId) {
-            supabase.from('orders')
+            supabaseAdmin.from('orders')
                 .update({ metadata: { ...preMeta, hubtel_checkout_id: checkoutId } })
                 .eq('id', order.id)
                 .then(({ error }) => { if (error) console.warn('[Hubtel] checkout_id persist failed:', error.message); });

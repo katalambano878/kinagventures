@@ -1,13 +1,10 @@
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { sendOrderConfirmation } from '@/lib/notifications';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { readPaymentPlan, computeDeposit, isPartialPlan } from '@/lib/payment-plan';
 import { checkHubtelStatus, hubtelReferenceKind, isHubtelPaid, stripHubtelReferenceSuffix } from '@/lib/hubtel';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -68,7 +65,7 @@ export async function POST(req: Request) {
         const innerStatus = String(data.Status ?? topStatus ?? '').toLowerCase();
         const looksSuccessful = isHubtelPaid(String(topStatus || ''), responseCode) || isHubtelPaid(innerStatus, responseCode);
 
-        const { data: existingOrder, error: fetchError } = await supabase
+        const { data: existingOrder, error: fetchError } = await supabaseAdmin
             .from('orders')
             .select('id, order_number, payment_status, total, email, metadata')
             .eq('order_number', merchantOrderRef)
@@ -104,7 +101,7 @@ export async function POST(req: Request) {
         // Record failures (no gateway re-verify needed for a negative outcome).
         if (!looksSuccessful) {
             console.log('[Hubtel Callback] Recording failure for', merchantOrderRef);
-            await supabase.from('orders').update({
+            await supabaseAdmin.from('orders').update({
                 payment_status: 'failed',
                 metadata: {
                     ...(existingOrder.metadata || {}),
@@ -145,7 +142,7 @@ export async function POST(req: Request) {
 
         let orderJson: any;
         if (isBalancePayment) {
-            const { data: rpcJson, error: balErr } = await supabase.rpc('mark_balance_collected', {
+            const { data: rpcJson, error: balErr } = await supabaseAdmin.rpc('mark_balance_collected', {
                 p_order_id: existingOrder.id,
                 p_collected_by: null,
                 p_note: `Hubtel balance | ref=${checkoutId || rawClientReference}`,
@@ -159,7 +156,7 @@ export async function POST(req: Request) {
             const rpcName = isPartial ? 'mark_order_partially_paid' : 'mark_order_paid';
             const rpcArgs: Record<string, unknown> = { order_ref: merchantOrderRef, moolre_ref: checkoutId || 'hubtel-callback' };
             if (isPartial) rpcArgs.deposit_amount = depositAmount;
-            const { data: rpcJson, error: updateError } = await supabase.rpc(rpcName, rpcArgs);
+            const { data: rpcJson, error: updateError } = await supabaseAdmin.rpc(rpcName, rpcArgs);
             if (updateError) {
                 console.error('[Hubtel Callback] RPC error:', updateError.message);
                 return NextResponse.json({ success: false, message: 'Database update failed' }, { status: 500 });
@@ -174,7 +171,7 @@ export async function POST(req: Request) {
         // Customer stats only on the initial payment (never double-count on balance).
         try {
             if (orderJson.email && !isBalancePayment) {
-                await supabase.rpc('update_customer_stats', { p_customer_email: orderJson.email, p_order_total: orderJson.total });
+                await supabaseAdmin.rpc('update_customer_stats', { p_customer_email: orderJson.email, p_order_total: orderJson.total });
             }
         } catch (e: any) {
             console.error('[Hubtel Callback] Customer stats failed:', e?.message || e);

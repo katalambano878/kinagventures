@@ -106,7 +106,6 @@ export default function Header() {
         .from('products')
         .select('id, slug, name, price, categories!inner(name), product_images!product_id(url, position)')
         .ilike('name', `%${trimmed}%`)
-        .order('position', { foreignTable: 'product_images', ascending: true })
         .limit(8);
       setSearchResults(
         (data || []).map((p: any) => ({

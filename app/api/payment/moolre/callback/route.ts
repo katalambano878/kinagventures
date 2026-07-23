@@ -1,13 +1,10 @@
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { sendOrderConfirmation } from '@/lib/notifications';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { readPaymentPlan, computeDeposit, isPartialPlan } from '@/lib/payment-plan';
 
 // Use Service Role Key for admin-level updates (marking paid)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 /**
  * Moolre Callback Payload Structure (from their actual API):
@@ -154,7 +151,7 @@ export async function POST(req: Request) {
             console.log(`[Callback] Payment SUCCESS for Order ${merchantOrderRef}`);
 
             // Check if order exists
-            const { data: existingOrder, error: fetchError } = await supabase
+            const { data: existingOrder, error: fetchError } = await supabaseAdmin
                 .from('orders')
                 .select('id, order_number, payment_status, total, metadata')
                 .eq('order_number', merchantOrderRef)
@@ -188,7 +185,7 @@ export async function POST(req: Request) {
                 if (callbackAmount !== null && Math.abs(callbackAmount - expectedBalance) > 0.01) {
                     console.warn('[Callback] Balance amount mismatch! Expected:', expectedBalance, 'Got:', callbackAmount);
                 }
-                const { data: rpcJson, error: balErr } = await supabase.rpc('mark_balance_collected', {
+                const { data: rpcJson, error: balErr } = await supabaseAdmin.rpc('mark_balance_collected', {
                     p_order_id: existingOrder.id,
                     p_collected_by: null,
                     p_note: `Moolre balance payment ${moolreReference}`
@@ -211,7 +208,7 @@ export async function POST(req: Request) {
                 const rpcName = isPartial ? 'mark_order_partially_paid' : 'mark_order_paid';
                 const rpcArgs: Record<string, unknown> = { order_ref: merchantOrderRef, moolre_ref: String(moolreReference) };
                 if (isPartial) rpcArgs.deposit_amount = depositAmount;
-                const { data: rpcJson, error: updateError } = await supabase.rpc(rpcName, rpcArgs);
+                const { data: rpcJson, error: updateError } = await supabaseAdmin.rpc(rpcName, rpcArgs);
                 if (updateError) {
                     console.error('[Callback] RPC Error:', updateError.message);
                     return NextResponse.json({ success: false, message: 'Database update failed' }, { status: 500 });
@@ -230,7 +227,7 @@ export async function POST(req: Request) {
             // balance payment must not double-count the order total).
             try {
                 if (orderJson.email && !isBalancePayment) {
-                    await supabase.rpc('update_customer_stats', {
+                    await supabaseAdmin.rpc('update_customer_stats', {
                         p_customer_email: orderJson.email,
                         p_order_total: orderJson.total
                     });
@@ -254,7 +251,7 @@ export async function POST(req: Request) {
             // Payment failed
             console.log(`[Callback] Payment FAILED for ${merchantOrderRef} | Status: ${apiStatus} | TX: ${txStatus}`);
 
-            const { data: failedOrderMeta } = await supabase
+            const { data: failedOrderMeta } = await supabaseAdmin
                 .from('orders')
                 .select('metadata')
                 .eq('order_number', merchantOrderRef)
@@ -266,7 +263,7 @@ export async function POST(req: Request) {
                 failure_reason: body.message || 'Payment failed'
             };
 
-            await supabase
+            await supabaseAdmin
                 .from('orders')
                 .update({
                     payment_status: 'failed',

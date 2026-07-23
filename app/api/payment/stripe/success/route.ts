@@ -1,11 +1,8 @@
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { createClient } from '@supabase/supabase-js';
 import { sendOrderConfirmation } from '@/lib/notifications';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 /**
  * Stripe Checkout success redirect: verify session, mark order paid, redirect to order-success.
@@ -33,7 +30,7 @@ export async function GET(req: Request) {
       return NextResponse.redirect(new URL(`/pay/${orderNumber}?error=not_paid`, req.url));
     }
 
-    const { data: order, error: fetchError } = await supabase
+    const { data: order, error: fetchError } = await supabaseAdmin
       .from('orders')
       .select('id, order_number, payment_status, total, email')
       .eq('order_number', orderNumber)
@@ -47,7 +44,7 @@ export async function GET(req: Request) {
       return NextResponse.redirect(new URL(`/order-success?order=${encodeURIComponent(orderNumber)}`, req.url));
     }
 
-    const { data: orderJson, error: updateError } = await supabase.rpc('mark_order_paid', {
+    const { data: orderJson, error: updateError } = await supabaseAdmin.rpc('mark_order_paid', {
       order_ref: orderNumber,
       moolre_ref: `stripe:${session.payment_intent || sessionId}`,
     });
@@ -59,7 +56,7 @@ export async function GET(req: Request) {
 
     if (orderJson?.email) {
       try {
-        await supabase.rpc('update_customer_stats', {
+        await supabaseAdmin.rpc('update_customer_stats', {
           p_customer_email: orderJson.email,
           p_order_total: orderJson.total,
         });

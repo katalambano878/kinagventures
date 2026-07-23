@@ -1,11 +1,8 @@
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { readPaymentPlan } from '@/lib/payment-plan';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 const isValidUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
@@ -41,7 +38,7 @@ export async function POST(req: Request) {
         let rows: any[] = [];
 
         if (query.includes('@')) {
-            const { data } = await supabase
+            const { data } = await supabaseAdmin
                 .from('orders')
                 .select(SELECT)
                 .ilike('email', query)
@@ -51,7 +48,7 @@ export async function POST(req: Request) {
             rows = data || [];
         } else {
             // Try order_number, then tracking_number, then UUID id.
-            const { data: byNumber } = await supabase
+            const { data: byNumber } = await supabaseAdmin
                 .from('orders')
                 .select(SELECT)
                 .eq('order_number', query)
@@ -59,7 +56,7 @@ export async function POST(req: Request) {
             rows = byNumber || [];
 
             if (rows.length === 0) {
-                const { data: byTracking } = await supabase
+                const { data: byTracking } = await supabaseAdmin
                     .from('orders')
                     .select(SELECT)
                     .eq('metadata->>tracking_number', query)
@@ -68,7 +65,7 @@ export async function POST(req: Request) {
             }
 
             if (rows.length === 0 && isValidUUID(query)) {
-                const { data: byId } = await supabase
+                const { data: byId } = await supabaseAdmin
                     .from('orders')
                     .select(SELECT)
                     .eq('id', query)

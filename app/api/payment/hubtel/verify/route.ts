@@ -1,13 +1,10 @@
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { sendOrderConfirmation } from '@/lib/notifications';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { readPaymentPlan, computeDeposit, isPartialPlan } from '@/lib/payment-plan';
 import { checkHubtelStatus, hubtelReferenceKind, isHubtelPaid } from '@/lib/hubtel';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const ORDER_NUMBER_RE = /^ORD-\d+-\d+$/;
@@ -50,7 +47,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, message: 'A valid email is required' }, { status: 400 });
         }
 
-        const { data: order, error: fetchError } = await supabase
+        const { data: order, error: fetchError } = await supabaseAdmin
             .from('orders')
             .select('id, order_number, payment_status, status, total, email, metadata')
             .eq('order_number', orderNumber)
@@ -122,7 +119,7 @@ export async function POST(req: Request) {
 
         let orderJson: any;
         if (isBalancePayment) {
-            const { data, error: balErr } = await supabase.rpc('mark_balance_collected', {
+            const { data, error: balErr } = await supabaseAdmin.rpc('mark_balance_collected', {
                 p_order_id: order.id,
                 p_collected_by: null,
                 p_note: `Hubtel balance via /verify | ref=${clientReference}`,
@@ -133,14 +130,14 @@ export async function POST(req: Request) {
             const rpcName = isPartial ? 'mark_order_partially_paid' : 'mark_order_paid';
             const rpcArgs: Record<string, unknown> = { order_ref: orderNumber, moolre_ref: 'hubtel-api-verify' };
             if (isPartial) rpcArgs.deposit_amount = depositAmount;
-            const { data, error: updateError } = await supabase.rpc(rpcName, rpcArgs);
+            const { data, error: updateError } = await supabaseAdmin.rpc(rpcName, rpcArgs);
             if (updateError) return NextResponse.json({ success: false, message: 'Failed to update order' }, { status: 500 });
             orderJson = data;
         }
 
         try {
             if (orderJson?.email && !isBalancePayment) {
-                await supabase.rpc('update_customer_stats', { p_customer_email: orderJson.email, p_order_total: orderJson.total });
+                await supabaseAdmin.rpc('update_customer_stats', { p_customer_email: orderJson.email, p_order_total: orderJson.total });
             }
         } catch (e: any) {
             console.error('[Hubtel Verify] Stats failed:', e?.message || e);

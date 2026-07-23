@@ -1,16 +1,11 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 // Simple in-memory cache
 let cache: { data: any; timestamp: number } | null = null;
-const CACHE_TTL = 30 * 60 * 1000; // 30 minutes — categories rarely change
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
 export async function GET() {
-    // Check cache
     if (cache && Date.now() - cache.timestamp < CACHE_TTL) {
         return NextResponse.json(cache.data, {
             headers: {
@@ -21,7 +16,7 @@ export async function GET() {
     }
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
             .from('categories')
             .select('id, name, slug, image_url, parent_id, metadata')
             .eq('status', 'active')
@@ -32,7 +27,6 @@ export async function GET() {
             return NextResponse.json({ error: 'Failed to fetch categories' }, { status: 500 });
         }
 
-        // Cache
         cache = { data, timestamp: Date.now() };
 
         return NextResponse.json(data, {

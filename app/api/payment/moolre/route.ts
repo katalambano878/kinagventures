@@ -79,7 +79,8 @@ export async function POST(req: Request) {
             const eligible = await orderIsAllPreorder(supabaseAdmin, existingOrder.id as string);
             if (!eligible) plan = 'full';
         }
-        const { depositAmount, balanceDue } = computeDeposit(orderTotal, plan);
+        const storedDeposit = Number((existingOrder.metadata as any)?.deposit_amount);
+        const { depositAmount, balanceDue } = computeDeposit(orderTotal, plan, storedDeposit);
         const isPartial = isPartialPlan(plan);
 
         let amount: number;

@@ -9,7 +9,7 @@ import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabase';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useRecaptcha } from '@/hooks/useRecaptcha';
-import { computeDeposit, type PaymentPlan } from '@/lib/payment-plan';
+import { computeDeposit, DEPOSIT_PERCENT, BALANCE_PERCENT, type PaymentPlan } from '@/lib/payment-plan';
 
 export default function CheckoutPage() {
   usePageTitle('Checkout');
@@ -59,7 +59,7 @@ export default function CheckoutPage() {
   const [paymentMethod] = useState<'hubtel'>('hubtel');
   const [errors, setErrors] = useState<any>({});
 
-  // Part-payment (50% deposit) — only offered when every item in the cart is a
+  // Part-payment (80% deposit) — only offered when every item in the cart is a
   // pre-order (a product with metadata.preorder_shipping set).
   const [paymentPlan, setPaymentPlan] = useState<PaymentPlan>('full');
   const [preorderMap, setPreorderMap] = useState<Record<string, boolean>>({});
@@ -100,7 +100,7 @@ export default function CheckoutPage() {
   const total = subtotal + shippingCost + tax;
 
   // Fetch pre-order flags for the products in the cart so we know whether to
-  // offer the 50% deposit plan (deposit is pre-order-only).
+  // offer the 80% deposit plan (deposit is pre-order-only).
   const isValidUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
   useEffect(() => {
     const ids = cart.map(i => i.id).filter(id => isValidUUID(id));
@@ -643,7 +643,7 @@ export default function CheckoutPage() {
                   {depositEligible && (
                     <>
                       <h2 className="text-xl font-bold text-gray-900 mt-8 mb-2">Payment Plan</h2>
-                      <p className="text-sm text-gray-600 mb-4">Your cart is pre-order only, so you can reserve it with a 50% deposit and pay the balance on delivery or pickup.</p>
+                      <p className="text-sm text-gray-600 mb-4">Your cart is pre-order only, so you can reserve it with an {DEPOSIT_PERCENT}% deposit and pay the remaining {BALANCE_PERCENT}% when the products arrive in Ghana.</p>
                       <div className="space-y-3">
                         <label className={`flex items-center justify-between gap-4 p-4 border-2 rounded-lg cursor-pointer transition-colors ${paymentPlan === 'full' ? 'border-gray-900 bg-gray-50' : 'border-gray-300 hover:border-gray-400'}`}>
                           <div className="flex items-center gap-4">
@@ -660,9 +660,9 @@ export default function CheckoutPage() {
                           <div className="flex items-center gap-4">
                             <input type="radio" name="paymentPlan" value="deposit_50" checked={paymentPlan === 'deposit_50'} onChange={() => setPaymentPlan('deposit_50')} className="w-5 h-5 text-gray-900" />
                             <div>
-                              <p className="font-semibold text-gray-900">Pay 50% deposit</p>
+                              <p className="font-semibold text-gray-900">Pay {DEPOSIT_PERCENT}% deposit</p>
                               <p className="text-sm text-gray-600">
-                                Pay <span className="font-semibold text-emerald-700">GH₵ {depositAmount.toFixed(2)}</span> now, balance of <span className="font-semibold text-amber-700">GH₵ {balanceDue.toFixed(2)}</span> on delivery/pickup.
+                                Pay <span className="font-semibold text-emerald-700">GH₵ {depositAmount.toFixed(2)}</span> now. The remaining {BALANCE_PERCENT}% (<span className="font-semibold text-amber-700">GH₵ {balanceDue.toFixed(2)}</span>) is due when the products arrive in Ghana.
                               </p>
                             </div>
                           </div>
@@ -672,7 +672,7 @@ export default function CheckoutPage() {
 
                       {paymentPlan === 'deposit_50' && (
                         <div className="mt-3 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                          Balance of <strong>GH₵ {balanceDue.toFixed(2)}</strong> must be paid in full before your goods are released.
+                          The remaining <strong>GH₵ {balanceDue.toFixed(2)}</strong> ({BALANCE_PERCENT}%) is paid when the products arrive in Ghana, before they are released.
                         </div>
                       )}
                     </>
@@ -700,7 +700,7 @@ export default function CheckoutPage() {
                           Processing...
                         </>
                       ) : paymentPlan === 'deposit_50' ? (
-                        `Pay 50% Deposit · GH₵ ${upfrontAmount.toFixed(2)}`
+                        `Pay ${DEPOSIT_PERCENT}% Deposit · GH₵ ${upfrontAmount.toFixed(2)}`
                       ) : (
                         'Continue to Payment'
                       )}

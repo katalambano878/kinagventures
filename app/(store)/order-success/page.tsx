@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { readPaymentPlan } from '@/lib/payment-plan';
+import { readPaymentPlan, depositPercentOf } from '@/lib/payment-plan';
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
@@ -148,7 +148,6 @@ function OrderSuccessContent() {
   const isPartiallyPaid = order.payment_status === 'partially_paid';
   const { plan, depositAmount, balanceDue } = readPaymentPlan(order);
   const isDeposit = isPartiallyPaid && (plan === 'deposit_50' || plan === 'partial');
-  const pickupOrDelivery = order.shipping_method === 'pickup' ? 'pickup' : 'delivery';
   // "Settled" = the customer has met their obligation for now (paid in full OR deposit received).
   const isSettled = isPaid || isPartiallyPaid;
 
@@ -185,7 +184,7 @@ function OrderSuccessContent() {
             </h1>
             <p className="text-xl text-gray-600 mb-8">
               {isDeposit
-                ? `Thanks! We've received your deposit and reserved your order. The balance is due on ${pickupOrDelivery}.`
+                ? `Thanks! We've received your deposit and reserved your order. The remaining balance is due when the products arrive in Ghana.`
                 : isPaid
                   ? "Thank you for your purchase. We're processing your order now."
                   : 'Your order is pending payment. Complete payment to confirm processing.'}
@@ -193,14 +192,14 @@ function OrderSuccessContent() {
 
             {isDeposit && (
               <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-5 mb-8 text-left">
-                <p className="font-bold text-gray-900 mb-3">Balance due on {pickupOrDelivery}</p>
+                <p className="font-bold text-gray-900 mb-3">Balance due when goods arrive in Ghana</p>
                 <div className="grid sm:grid-cols-3 gap-3 mb-3">
                   <div>
                     <p className="text-xs text-gray-600">Order Total</p>
                     <p className="text-lg font-bold text-gray-900">GH₵ {Number(order.total).toFixed(2)}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-600">Deposit Paid (50%)</p>
+                    <p className="text-xs text-gray-600">Deposit Paid ({depositPercentOf(depositAmount, Number(order.total))}%)</p>
                     <p className="text-lg font-bold text-emerald-700">GH₵ {depositAmount.toFixed(2)}</p>
                   </div>
                   <div>
@@ -209,7 +208,7 @@ function OrderSuccessContent() {
                   </div>
                 </div>
                 <p className="text-sm text-amber-900 leading-relaxed">
-                  The remaining <strong>GH₵ {balanceDue.toFixed(2)}</strong> can be paid by cash or mobile money on {pickupOrDelivery}, or online now using the button below.
+                  The remaining <strong>GH₵ {balanceDue.toFixed(2)}</strong> can be paid by cash or mobile money when the products arrive in Ghana, or online now using the button below.
                 </p>
               </div>
             )}
@@ -347,7 +346,7 @@ function OrderSuccessContent() {
                       <span>GH₵{depositAmount.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm text-amber-700 font-semibold">
-                      <span>Balance due on {pickupOrDelivery}</span>
+                      <span>Balance due in Ghana</span>
                       <span>GH₵{balanceDue.toFixed(2)}</span>
                     </div>
                   </>

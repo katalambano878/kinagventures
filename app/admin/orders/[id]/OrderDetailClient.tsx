@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import FraudDetectionAlert from '@/components/FraudDetectionAlert';
-import { readPaymentPlan } from '@/lib/payment-plan';
+import { readPaymentPlan, depositPercentOf } from '@/lib/payment-plan';
 
 interface OrderDetailClientProps {
   orderId: string;
@@ -202,7 +202,7 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
   const [markingPaid, setMarkingPaid] = useState(false);
   const [collectingBalance, setCollectingBalance] = useState(false);
 
-  // For a 50% deposit order, record that the outstanding balance has been
+  // For a deposit order, record that the outstanding balance has been
   // collected (cash / mobile money on delivery or pickup). Flips the order to
   // fully paid via the mark_balance_collected RPC.
   const handleCollectBalance = async () => {
@@ -671,7 +671,7 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                 <div className="mt-2 mb-3 p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
                   <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm">
                     <i className="ri-wallet-3-line"></i>
-                    <span>50% Deposit Plan</span>
+                    <span>{depositPercentOf(orderDeposit, Number(order.total))}% Deposit Plan</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-700">Deposit paid</span>

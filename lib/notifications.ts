@@ -1,6 +1,6 @@
 import { Resend } from 'resend';
 import { supabase } from '@/lib/supabase';
-import { readPaymentPlan } from '@/lib/payment-plan';
+import { readPaymentPlan, depositPercentOf } from '@/lib/payment-plan';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 'missing_api_key');
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
@@ -382,7 +382,6 @@ export async function sendOrderConfirmation(order: any) {
     // this reverts to a normal "Order Confirmed" message).
     const { plan, depositAmount, balanceDue } = readPaymentPlan(order);
     const isDeposit = (plan === 'deposit_50' || plan === 'partial') && balanceDue > 0;
-    const handoverWord = order?.shipping_method === 'pickup' ? 'pickup' : 'delivery';
     const headline = isDeposit ? 'Deposit Received!' : 'Order Confirmed!';
 
     // 1. Email to Customer
@@ -399,14 +398,14 @@ export async function sendOrderConfirmation(order: any) {
   ${emailInfoRow('Contact phone', emailPhoneCell(phone))}
   ${trackingNumber ? emailInfoRow('Tracking', trackingNumber) : ''}
   ${emailInfoRow('Order Total', `GH₵${Number(total).toFixed(2)}`)}
-  ${isDeposit ? emailInfoRow('Deposit Paid (50%)', `GH₵${depositAmount.toFixed(2)}`) : ''}
-  ${isDeposit ? emailInfoRow(`Balance Due (on ${handoverWord})`, `GH₵${balanceDue.toFixed(2)}`) : ''}
+  ${isDeposit ? emailInfoRow(`Deposit Paid (${depositPercentOf(depositAmount, Number(total))}%)`, `GH₵${depositAmount.toFixed(2)}`) : ''}
+  ${isDeposit ? emailInfoRow(`Balance Due (when goods arrive in Ghana)`, `GH₵${balanceDue.toFixed(2)}`) : ''}
 </table>
 
 ${emailShippingNotes(shippingNotes)}
 
 ${isDeposit
-    ? `<p style="color:#374151;font-size:14px;line-height:1.6;margin:16px 0;">We're reserving your order. The remaining <strong>GH₵${balanceDue.toFixed(2)}</strong> is collected by cash or mobile money on ${handoverWord} — or you can pay it online anytime.</p>${emailButton('Pay Balance Now', `${baseUrl}/complete-payment?ref=${encodeURIComponent(order_number || id)}`)}`
+    ? `<p style="color:#374151;font-size:14px;line-height:1.6;margin:16px 0;">We're reserving your order. The remaining <strong>GH₵${balanceDue.toFixed(2)}</strong> is collected by cash or mobile money when the products arrive in Ghana — or you can pay it online anytime.</p>${emailButton('Pay Balance Now', `${baseUrl}/complete-payment?ref=${encodeURIComponent(order_number || id)}`)}`
     : `<p style="color:#374151;font-size:14px;line-height:1.6;margin:16px 0;">We're getting your order ready. You'll receive updates as it's processed and packaged.</p>${emailButton('Track Your Order', trackingUrl)}`}
 
 <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">Or copy this link: <a href="${trackingUrl}" style="color:${BRAND.color};">${trackingUrl}</a></p>
@@ -415,7 +414,7 @@ ${isDeposit
     await sendEmail({
         to: email,
         subject: isDeposit
-            ? `Deposit Received #${order_number || id} — Balance GH₵${balanceDue.toFixed(2)} on ${handoverWord}`
+            ? `Deposit Received #${order_number || id} — Balance GH₵${balanceDue.toFixed(2)} when goods arrive in Ghana`
             : `Order Confirmed! #${order_number || id}`,
         html: customerEmailHtml
     });
@@ -430,12 +429,12 @@ ${isDeposit
   ${emailInfoRow('Email', email)}
   ${emailInfoRow('Phone', emailPhoneCell(phone))}
   ${emailInfoRow('Total', `GH₵${Number(total).toFixed(2)}`)}
-  ${isDeposit ? emailInfoRow('Deposit Paid (50%)', `GH₵${depositAmount.toFixed(2)}`) : ''}
-  ${isDeposit ? emailInfoRow('Balance to Collect', `GH₵${balanceDue.toFixed(2)}`) : ''}
+  ${isDeposit ? emailInfoRow(`Deposit Paid (${depositPercentOf(depositAmount, Number(total))}%)`, `GH₵${depositAmount.toFixed(2)}`) : ''}
+  ${isDeposit ? emailInfoRow('Balance to Collect (in Ghana)', `GH₵${balanceDue.toFixed(2)}`) : ''}
   ${trackingNumber ? emailInfoRow('Tracking', trackingNumber) : ''}
 </table>
 
-${isDeposit ? `<p style="color:#b45309;font-size:14px;line-height:1.6;margin:12px 0;"><strong>Action at handover:</strong> collect GH₵${balanceDue.toFixed(2)} from the customer on ${handoverWord} before releasing the goods.</p>` : ''}
+${isDeposit ? `<p style="color:#b45309;font-size:14px;line-height:1.6;margin:12px 0;"><strong>Action when goods arrive in Ghana:</strong> collect GH₵${balanceDue.toFixed(2)} from the customer before releasing the goods.</p>` : ''}
 
 ${emailShippingNotes(shippingNotes)}
 
@@ -451,7 +450,7 @@ ${emailButton('View Order in Admin', `${baseUrl}/admin/orders/${id}`)}
     // 3. SMS to Customer (if phone exists)
     if (phone) {
         const smsMessage = isDeposit
-            ? `Hi ${name}, deposit received for order #${order_number || id}. Balance GH₵${balanceDue.toFixed(2)} due on ${handoverWord}.${trackingNumber ? ` Tracking: ${trackingNumber}.` : ''} Pay balance/track: ${trackingUrl}${shippingNotesSms}`
+            ? `Hi ${name}, deposit received for order #${order_number || id}. Balance GH₵${balanceDue.toFixed(2)} due when goods arrive in Ghana.${trackingNumber ? ` Tracking: ${trackingNumber}.` : ''} Pay balance/track: ${trackingUrl}${shippingNotesSms}`
             : trackingNumber
                 ? `Hi ${name}, your order #${order_number || id} is confirmed! Tracking: ${trackingNumber}. Track here: ${trackingUrl}${shippingNotesSms}`
                 : `Hi ${name}, your order #${order_number || id} at ${BRAND.name} is confirmed! Track here: ${trackingUrl}${shippingNotesSms}`;

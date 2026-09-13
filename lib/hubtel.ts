@@ -209,7 +209,7 @@ export function isHubtelFailure(
  * Builds a unique clientReference that fits Hubtel's 32-char hard limit.
  *
  * Layout: `<orderRef>-<flag><base36Timestamp>` truncated to 32 chars.
- *   flag = "r" → initial / retry checkout (full or 50% deposit)
+ *   flag = "r" → initial / retry checkout (full or 80% deposit)
  *   flag = "b" → balance top-up on a partially_paid order
  *
  * The callback strips the "-<flag><...>" suffix to recover the order number

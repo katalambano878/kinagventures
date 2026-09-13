@@ -606,7 +606,7 @@ export default function AdminOrdersPage() {
                         {order.payment_status === 'partially_paid' && (
                           <span className="text-xs mt-1 inline-flex items-center gap-1 text-orange-700 font-semibold">
                             <i className="ri-wallet-3-line"></i>
-                            Deposit · Bal GH₵ {(Number(order.metadata?.balance_due) || Number(order.total) / 2).toFixed(2)}
+                            Deposit · Bal GH₵ {(Number(order.metadata?.balance_due) || Number(order.total) * 0.2).toFixed(2)}
                           </span>
                         )}
                       </div>

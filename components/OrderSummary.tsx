@@ -1,3 +1,5 @@
+import { DEPOSIT_PERCENT, BALANCE_PERCENT } from '@/lib/payment-plan';
+
 interface OrderItem {
   id: string;
   name: string;
@@ -71,14 +73,14 @@ export default function OrderSummary({ items, subtotal, shipping, tax, total, pa
         <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
           <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm">
             <i className="ri-wallet-3-line text-base"></i>
-            <span>50% Deposit Plan</span>
+            <span>{DEPOSIT_PERCENT}% Deposit Plan</span>
           </div>
           <div className="flex justify-between text-sm text-gray-700">
-            <span>Pay now (50%)</span>
+            <span>Pay now ({DEPOSIT_PERCENT}%)</span>
             <span className="font-semibold text-emerald-700">GH₵ {depositAmount.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-sm text-gray-700">
-            <span>Balance on delivery/pickup</span>
+            <span>Balance in Ghana ({BALANCE_PERCENT}%)</span>
             <span className="font-semibold text-amber-700">GH₵ {balanceDue.toFixed(2)}</span>
           </div>
         </div>

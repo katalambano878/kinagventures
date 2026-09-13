@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
-import { computeDeposit, isPartialPlan, readPaymentPlan, type PaymentPlan } from '@/lib/payment-plan';
+import { computeDeposit, isPartialPlan, readPaymentPlan, DEPOSIT_PERCENT, type PaymentPlan } from '@/lib/payment-plan';
 import {
     initiateHubtelCheckout,
     makeHubtelBalanceReference,
@@ -24,7 +24,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  *    a diverging stored total is overwritten before charging.
  *  - Out-of-stock lines are auto-removed and the total recomputed.
  *  - Deposit-plan math is re-derived from persisted metadata, and the
- *    50% deposit is only honoured when every line is a pre-order.
+ *    80% deposit is only honoured when every line is a pre-order.
  *  - clientReference is `<orderNumber>-r<base36>` (<=32 chars) so retries
  *    don't collide and the callback can strip the suffix to find the order.
  */
@@ -183,7 +183,8 @@ export async function POST(req: Request) {
             });
             if (!allPreorder) plan = 'full';
         }
-        const { depositAmount, balanceDue } = computeDeposit(orderTotal, plan);
+        const storedDeposit = Number((order.metadata as any)?.deposit_amount);
+        const { depositAmount, balanceDue } = computeDeposit(orderTotal, plan, storedDeposit);
         const isPartial = isPartialPlan(plan);
 
         let amount: number;
@@ -218,7 +219,7 @@ export async function POST(req: Request) {
 
         const description = purpose === 'balance'
             ? `Order ${orderRef} (balance payment)`
-            : `Order ${orderRef}${plan === 'deposit_50' ? ' (50% deposit)' : plan === 'partial' ? ' (partial payment)' : ''}`;
+            : `Order ${orderRef}${plan === 'deposit_50' ? ` (${DEPOSIT_PERCENT}% deposit)` : plan === 'partial' ? ' (partial payment)' : ''}`;
 
         // Persist client reference + plan up-front so /verify (which reads
         // metadata.hubtel_client_reference) works and the callback sees the

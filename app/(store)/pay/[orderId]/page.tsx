@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { readPaymentPlan, computeDeposit } from '@/lib/payment-plan';
+import { readPaymentPlan, computeDeposit, depositPercentOf, DEPOSIT_PERCENT } from '@/lib/payment-plan';
 
 export default function PaymentPage() {
   usePageTitle('Complete Payment');
@@ -153,6 +153,7 @@ export default function PaymentPage() {
   const isDeposit = plan === 'deposit_50' || plan === 'partial';
   const { depositAmount, balanceDue } = computeDeposit(Number(order?.total) || 0, plan, order?.metadata?.deposit_amount);
   const chargeNow = isDeposit ? depositAmount : (Number(order?.total) || 0);
+  const paidPercent = depositPercentOf(depositAmount, Number(order?.total) || 0);
 
   return (
     <main className="min-h-screen bg-gray-50 py-12 px-4">
@@ -199,14 +200,14 @@ export default function PaymentPage() {
             <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
               <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm">
                 <i className="ri-wallet-3-line text-base"></i>
-                <span>50% Deposit Plan</span>
+                <span>{paidPercent}% Deposit Plan</span>
               </div>
               <div className="flex justify-between text-sm text-gray-700">
-                <span>Pay now (50%)</span>
+                <span>Pay now ({paidPercent}%)</span>
                 <span className="font-semibold text-emerald-700">GH₵ {depositAmount.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm text-gray-700">
-                <span>Balance on delivery/pickup</span>
+                <span>Balance in Ghana ({Math.max(0, 100 - paidPercent)}%)</span>
                 <span className="font-semibold text-amber-700">GH₵ {balanceDue.toFixed(2)}</span>
               </div>
             </div>
@@ -278,7 +279,7 @@ export default function PaymentPage() {
             <>
               <i className="ri-secure-payment-line mr-2"></i>
               {isDeposit
-                ? `Pay 50% Deposit · GH₵ ${chargeNow.toFixed(2)}`
+                ? `Pay ${paidPercent || DEPOSIT_PERCENT}% Deposit · GH₵ ${chargeNow.toFixed(2)}`
                 : order?.payment_status === 'failed'
                   ? `Retry Payment (GH₵ ${order?.total?.toFixed(2)})`
                   : `Pay GH₵ ${order?.total?.toFixed(2)} with Mobile Money`}

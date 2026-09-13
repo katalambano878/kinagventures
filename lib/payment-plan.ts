@@ -1,26 +1,38 @@
 /**
- * Shared helpers for the split-payment ("50% deposit, 50% on delivery/pickup")
- * checkout flow.
+ * Shared helpers for the split-payment ("80% deposit, 20% when goods arrive
+ * in Ghana") checkout flow.
  *
- * The customer can opt to pay only a deposit through Moolre and settle the
- * balance in cash / mobile money when the order is delivered or picked up (or
- * online later via the /complete-payment page). We keep all the math here so the
- * checkout UI, the Moolre initiate / callback / verify routes, and the admin
- * pages all agree.
+ * The customer can opt to pay only a deposit through Hubtel/Moolre and settle
+ * the remaining 20% in cash / mobile money when the products arrive in Ghana
+ * (or online later via the /complete-payment page). We keep all the math here
+ * so the checkout UI, payment routes, and admin pages all agree.
  */
 
 /**
  * Plans:
  *  - 'full':       customer pays the whole order at checkout.
- *  - 'deposit_50': fixed 50% online deposit + 50% balance on delivery/pickup.
+ *  - 'deposit_50': historical plan id kept for existing orders. New checkouts
+ *                  charge DEPOSIT_RATIO (80%) online and leave BALANCE_PERCENT
+ *                  (20%) for arrival in Ghana. Stored deposit_amount wins so
+ *                  older 50% orders are not recast.
  *  - 'partial':    arbitrary partial payment. The actual amount paid lives in
  *                  metadata.deposit_amount. Reserved for future POS/manual use.
  */
 export type PaymentPlan = 'full' | 'deposit_50' | 'partial';
 
-export const DEPOSIT_RATIO = 0.5;
+export const DEPOSIT_PERCENT = 80;
+export const BALANCE_PERCENT = 20;
+export const DEPOSIT_RATIO = DEPOSIT_PERCENT / 100;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Percent the customer already paid, from stored amounts (works for old 50% orders). */
+export function depositPercentOf(depositAmount: number, total: number): number {
+  const t = Number(total) || 0;
+  const d = Number(depositAmount) || 0;
+  if (t <= 0) return DEPOSIT_PERCENT;
+  return Math.round((d / t) * 100);
+}
 
 /**
  * True for any plan where the customer leaves owing the store money.
@@ -33,9 +45,10 @@ export function isPartialPlan(plan: PaymentPlan): boolean {
 
 /**
  * Compute the amount a customer pays online for a given plan + order total.
- * `deposit_50` is a fixed 50%; `partial` requires the caller to pass an
- * explicit amount. For unknown / missing partial amounts we fall back to the
- * full total (safer than under-billing).
+ * `deposit_50` is DEPOSIT_RATIO unless a stored explicit amount is passed
+ * (so pending 50% orders keep the amount they were quoted). `partial`
+ * requires the caller to pass an explicit amount. For unknown / missing
+ * partial amounts we fall back to the full total (safer than under-billing).
  */
 export function computeDeposit(
   total: number,
@@ -48,6 +61,12 @@ export function computeDeposit(
 } {
   const safeTotal = Math.max(0, Number(total) || 0);
   if (plan === 'deposit_50') {
+    const raw = Number(explicitAmount);
+    if (Number.isFinite(raw) && raw > 0 && raw < safeTotal) {
+      const depositAmount = round2(raw);
+      const balanceDue = round2(safeTotal - depositAmount);
+      return { depositAmount, balanceDue, upfrontAmount: depositAmount };
+    }
     const depositAmount = round2(safeTotal * DEPOSIT_RATIO);
     const balanceDue = round2(safeTotal - depositAmount);
     return { depositAmount, balanceDue, upfrontAmount: depositAmount };
@@ -104,6 +123,6 @@ export function readPaymentPlan(order: any): {
 
 export const PAYMENT_PLAN_LABELS: Record<PaymentPlan, string> = {
   full: 'Pay in full',
-  deposit_50: 'Pay 50% deposit',
+  deposit_50: `Pay ${DEPOSIT_PERCENT}% deposit`,
   partial: 'Partial payment',
 };

@@ -172,7 +172,43 @@ function formatPhoneNumber(phone: string): string {
     return '+' + cleaned;
 }
 
-export async function sendSMS({ to, message }: { to: string; message: string }) {
+
+const TAYSEND_SMS_URL = (process.env.TAYSEND_API_URL || "https://api.taysend.com").replace(/\/+$/, "");
+const TAYSEND_FAILED_STATUSES = new Set(["failed", "rejected", "undelivered", "expired"]);
+
+async function sendViaTaysend(to: string, message: string, senderFallback?: string) {
+    const apiKey = process.env.TAYSEND_API_KEY?.trim();
+    const from = (process.env.TAYSEND_SENDER_ID || senderFallback || process.env.MOOLRE_SMS_SENDER_ID || "").trim();
+    if (!apiKey || !from) return null;
+    try {
+        const response = await fetch(`${TAYSEND_SMS_URL}/v1/messages`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+                "Idempotency-Key": crypto.randomUUID(),
+            },
+            body: JSON.stringify({ to, sender_id: from, message, type: "transactional" }),
+            signal: AbortSignal.timeout(15000),
+        });
+        const result: any = await response.json().catch(() => null);
+        const status = String(result?.status || "").toLowerCase();
+        if (response.ok && result?.id && !TAYSEND_FAILED_STATUSES.has(status)) {
+            return { status: 1, code: "SMS01", provider: "taysend", messageid: result.id, data: [{ messageid: result.id }] };
+        }
+        console.warn("[SMS] Taysend failed, falling back:", result?.error?.message || result?.error || status || response.status);
+        return null;
+    } catch (error: any) {
+        console.warn("[SMS] Taysend failed, falling back:", error?.message || error);
+        return null;
+    }
+}
+
+export async function sendSMS({
+ to, message }: { to: string; message: string }) {
+        const viaTaysend = await sendViaTaysend(formatPhoneNumber(to), message);
+    if (viaTaysend) return viaTaysend;
+
     // Moolre SMS API only requires X-API-VASKEY header for authentication
     // See: https://docs.moolre.com/#/send-sms
     // Allow MOOLRE_SMS_API_KEY or fall back to MOOLRE_API_KEY

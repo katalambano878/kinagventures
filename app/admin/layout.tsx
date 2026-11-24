@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { SmsCreditDashboardCard } from '@/components/admin/SmsCreditDashboardCard';
 
 export default function AdminLayout({
   children,
@@ -433,6 +434,7 @@ export default function AdminLayout({
           </div>
         </header>
 
+        <SmsCreditDashboardCard />
         <main className="p-4 lg:p-6">
           {children}
         </main>

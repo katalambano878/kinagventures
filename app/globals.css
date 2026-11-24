@@ -352,3 +352,67 @@ img {
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
+
+/* Admin dashboard: SMS credit low / empty — two blinks, pause, repeat */
+@keyframes sms-credit-double-blink {
+  0%,
+  42%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  }
+  5%,
+  10% {
+    opacity: 0.72;
+    box-shadow: 0 0 0 2px rgb(251 191 36 / 0.55);
+  }
+  15%,
+  20% {
+    opacity: 0.72;
+    box-shadow: 0 0 0 2px rgb(251 191 36 / 0.55);
+  }
+  22%,
+  40% {
+    opacity: 1;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  }
+}
+
+@keyframes sms-credit-double-blink-empty {
+  0%,
+  42%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  }
+  5%,
+  10% {
+    opacity: 0.72;
+    box-shadow: 0 0 0 2px rgb(248 113 113 / 0.65);
+  }
+  15%,
+  20% {
+    opacity: 0.72;
+    box-shadow: 0 0 0 2px rgb(248 113 113 / 0.65);
+  }
+  22%,
+  40% {
+    opacity: 1;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  }
+}
+
+.sms-credit-double-blink {
+  animation: sms-credit-double-blink 4s ease-in-out infinite;
+}
+
+.sms-credit-double-blink-empty {
+  animation: sms-credit-double-blink-empty 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sms-credit-double-blink,
+  .sms-credit-double-blink-empty {
+    animation: none;
+  }
+}

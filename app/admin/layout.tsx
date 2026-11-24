@@ -192,6 +192,11 @@ export default function AdminLayout({
       path: '/admin/orders',
       badge: ''
     },
+    {
+      title: 'Buy SMS',
+      icon: 'ri-message-3-line',
+      path: '/admin/sms-credit'
+    },
     // {
     //   title: 'POS System',
     //   icon: 'ri-store-3-line',

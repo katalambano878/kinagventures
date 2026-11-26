@@ -177,9 +177,14 @@ export default function CheckoutPage() {
       const trackingNumber = `SLI-${trackingId}`;
 
       // 1. Create Order
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert([{
+      // The order id is made here so the insert needs no read-back: guest
+      // orders are not readable through the data API (privacy).
+      const orderId = typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c) =>
+            (Number(c) ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (Number(c) / 4)))).toString(16));
+      const orderRow = {
+          id: orderId,
           order_number: orderNumber,
           user_id: user?.id || null, // Capture user_id if logged in
           email: shippingData.email,
@@ -206,11 +211,11 @@ export default function CheckoutPage() {
             deposit_amount: depositEligible ? depositAmount : total,
             balance_due: depositEligible ? balanceDue : 0
           }
-        }])
-        .select()
-        .single();
+        };
+      const { error: orderError } = await supabase.from('orders').insert([orderRow]);
 
       if (orderError) throw orderError;
+      const order = orderRow;
 
       // 2. Create Order Items (with UUID validation)
       // Build order items, resolving slugs to UUIDs if needed

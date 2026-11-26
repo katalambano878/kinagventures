@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { fetchOrderForView } from '@/lib/order-view';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { readPaymentPlan, computeDeposit, depositPercentOf, DEPOSIT_PERCENT } from '@/lib/payment-plan';
 
@@ -30,13 +31,7 @@ export default function PaymentPage() {
     async function fetchOrder() {
       try {
         // Fetch order by ID (UUID) or order_number
-        let query = supabase
-          .from('orders')
-          .select('*')
-          .or(`id.eq.${orderId},order_number.eq.${orderId}`)
-          .single();
-
-        const { data, error: fetchError } = await query;
+        const { data, error: fetchError } = await fetchOrderForView(String(orderId));
 
         if (fetchError || !data) {
           setError('Order not found. Please check your link and try again.');

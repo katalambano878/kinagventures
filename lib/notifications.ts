@@ -1,5 +1,9 @@
 import { Resend } from 'resend';
-import { supabase } from '@/lib/supabase';
+import { createServerSupabase } from '@/lib/supabase-server';
+
+// Server-only (payment routes, /api/notifications): reads order items with the
+// in-process service client, so guest orders' items are found too.
+const supabase = createServerSupabase('service');
 import { readPaymentPlan, depositPercentOf } from '@/lib/payment-plan';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 'missing_api_key');

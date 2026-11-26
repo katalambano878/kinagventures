@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { fetchOrderForView } from '@/lib/order-view';
 import { readPaymentPlan, depositPercentOf } from '@/lib/payment-plan';
 
 function OrderSuccessContent() {
@@ -25,14 +25,7 @@ function OrderSuccessContent() {
       }
 
       try {
-        const { data: orderData, error } = await supabase
-          .from('orders')
-          .select(`
-                    *,
-                    order_items (*)
-                `)
-          .eq('order_number', orderNumber)
-          .single();
+        const { data: orderData, error } = await fetchOrderForView(orderNumber);
 
         if (error) throw error;
         setOrder(orderData);
@@ -61,11 +54,7 @@ function OrderSuccessContent() {
 
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    const { data: refreshed } = await supabase
-      .from('orders')
-      .select('*, order_items (*)')
-      .eq('order_number', orderNum)
-      .single();
+    const { data: refreshed } = await fetchOrderForView(orderNum);
 
     const alreadySettled = purpose === 'balance'
       ? refreshed?.payment_status === 'paid'
@@ -101,11 +90,7 @@ function OrderSuccessContent() {
       const result = await res.json();
 
       if (result.success && (result.payment_status === 'paid' || result.payment_status === 'partially_paid')) {
-        const { data: updated } = await supabase
-          .from('orders')
-          .select('*, order_items (*)')
-          .eq('order_number', orderNum)
-          .single();
+        const { data: updated } = await fetchOrderForView(orderNum);
         if (updated) setOrder(updated);
       }
     } catch (err) {

@@ -3,7 +3,7 @@
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { supabase, syncAdminSessionCookie } from '@/lib/supabase';
 import { useRecaptcha } from '@/hooks/useRecaptcha';
 
 function AdminLoginForm() {
@@ -35,6 +35,8 @@ function AdminLoginForm() {
       if (error) throw error;
 
       if (data.session) {
+        // The server-side admin gate (middleware.ts) reads this cookie.
+        syncAdminSessionCookie(data.session);
         // Full page navigation so the admin layout sees the new session (avoids client-side race)
         window.location.href = '/admin';
         return;

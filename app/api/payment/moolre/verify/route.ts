@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerSupabase } from '@/lib/supabase-server';
 import { sendOrderConfirmation } from '@/lib/notifications';
 import { readPaymentPlan, computeDeposit, isPartialPlan } from '@/lib/payment-plan';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Service role (the old SUPABASE_SERVICE_ROLE_KEY client), in-process.
+const supabase = createServerSupabase('service');
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 /**
  * Payment verification endpoint.

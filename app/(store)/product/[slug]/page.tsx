@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import { createClient } from '@supabase/supabase-js';
+import { createServerSupabase } from '@/lib/supabase-server';
 import ProductDetailClient from './ProductDetailClient';
 
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://kinagventures.com';
@@ -7,10 +7,7 @@ const SITE_NAME = 'KINAG VENTURES';
 
 async function getProduct(slug: string) {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const supabase = createServerSupabase('anon');
     const { data } = await supabase
       .from('products')
       .select(

@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerSupabase } from '@/lib/supabase-server';
 import { sendOrderConfirmation } from '@/lib/notifications';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { readPaymentPlan, computeDeposit, isPartialPlan } from '@/lib/payment-plan';
 import { checkHubtelStatus, hubtelReferenceKind, isHubtelPaid, stripHubtelReferenceSuffix } from '@/lib/hubtel';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Service role (the old SUPABASE_SERVICE_ROLE_KEY client), in-process.
+const supabase = createServerSupabase('service');
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 

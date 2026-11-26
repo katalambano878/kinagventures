@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
-import { createClient } from '@supabase/supabase-js';
+import { createServerSupabase } from '@/lib/supabase-server';
 import { readPaymentPlan, computeDeposit, isPartialPlan, type PaymentPlan } from '@/lib/payment-plan';
 
 /**
@@ -17,9 +17,11 @@ async function orderIsAllPreorder(sb: any, orderId: string): Promise<boolean> {
     return products.every((p: any) => !!(p.metadata?.is_preorder ?? p.metadata?.preorder_shipping));
 }
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Service role (the old SUPABASE_SERVICE_ROLE_KEY client), in-process.
+const supabase = createServerSupabase('service');
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
     try {

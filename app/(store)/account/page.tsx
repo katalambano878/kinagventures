@@ -36,6 +36,7 @@ function AccountContent() {
 
   // Password Form States
   const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
     password: '',
     confirmPassword: ''
   });
@@ -100,12 +101,30 @@ function AccountContent() {
     setPasswordMessage({ type: '', text: '' });
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: passwordData.password
-      });
+      // The server checks the current password (or a sign-in in the last 15
+      // minutes) before changing it.
+      const { data, error } = await supabase.auth.updateUser({
+        password: passwordData.password,
+        current_password: passwordData.currentPassword || undefined,
+      } as any);
       if (error) throw error;
-      setPasswordMessage({ type: 'success', text: 'Password updated successfully!' });
-      setPasswordData({ password: '', confirmPassword: '' });
+      setPasswordData({ currentPassword: '', password: '', confirmPassword: '' });
+      // A password change ends every session of the account; the reply
+      // carries a fresh one for this browser.
+      const fresh = (data?.user as any)?.session;
+      if (fresh?.access_token && fresh?.refresh_token) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: fresh.access_token,
+          refresh_token: fresh.refresh_token,
+        });
+        if (!sessionError) {
+          setPasswordMessage({ type: 'success', text: 'Password updated successfully!' });
+          return;
+        }
+      }
+      await supabase.auth.signOut({ scope: 'local' });
+      router.push('/auth/login');
+      router.refresh();
     } catch (err: any) {
       setPasswordMessage({ type: 'error', text: err.message });
     } finally {
@@ -323,6 +342,19 @@ function AccountContent() {
                       )}
 
                       <form onSubmit={handleChangePassword} className="space-y-5">
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-gray-900">Current Password</label>
+                          <div className="relative">
+                            <i className="ri-lock-password-line absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                            <input
+                              type="password"
+                              autoComplete="current-password"
+                              value={passwordData.currentPassword}
+                              onChange={e => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                              className="w-full pl-11 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-emerald-50 focus:border-emerald-500 transition-all bg-gray-50 focus:bg-white"
+                            />
+                          </div>
+                        </div>
                         <div className="grid md:grid-cols-2 gap-6">
                           <div className="space-y-2">
                             <label className="text-sm font-semibold text-gray-900">New Password</label>

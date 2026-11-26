@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerSupabase } from '@/lib/supabase-server';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { computeDeposit, isPartialPlan, readPaymentPlan, DEPOSIT_PERCENT, type PaymentPlan } from '@/lib/payment-plan';
 import {
@@ -9,9 +9,11 @@ import {
     normalizeGhPhone,
 } from '@/lib/hubtel';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Service role (the old SUPABASE_SERVICE_ROLE_KEY client), in-process.
+const supabase = createServerSupabase('service');
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 const isUUID = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -269,7 +271,7 @@ export async function POST(req: Request) {
             supabase.from('orders')
                 .update({ metadata: { ...preMeta, hubtel_checkout_id: checkoutId } })
                 .eq('id', order.id)
-                .then(({ error }) => { if (error) console.warn('[Hubtel] checkout_id persist failed:', error.message); });
+                .then(({ error }: any) => { if (error) console.warn('[Hubtel] checkout_id persist failed:', error.message); });
         }
 
         return NextResponse.json({

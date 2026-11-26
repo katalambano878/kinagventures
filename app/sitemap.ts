@@ -1,8 +1,8 @@
 import { MetadataRoute } from 'next';
-import { createClient } from '@supabase/supabase-js';
+import { createServerSupabase } from '@/lib/supabase-server';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// Built per request: nothing may need the database during `next build`.
+export const dynamic = 'force-dynamic';
 
 /** Only include slugs that are valid for URLs (no empty, no slashes, no unsafe chars). */
 function isValidSlug(slug: string | null | undefined): slug is string {
@@ -39,7 +39,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let categoryPages: MetadataRoute.Sitemap = [];
 
   try {
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Same rows a visitor sees (the old anon-key client), in-process.
+    const supabase = createServerSupabase('anon');
 
     const { data: products } = await supabase
       .from('products')
@@ -48,8 +49,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     if (products?.length) {
       productPages = products
-        .filter((p) => isValidSlug(p.slug))
-        .map((product) => ({
+        .filter((p: any) => isValidSlug(p.slug))
+        .map((product: any) => ({
           url: `${baseUrl}/product/${encodeURIComponent(product.slug!.trim())}`,
           lastModified: safeLastModified(product.updated_at),
           changeFrequency: 'weekly' as const,
@@ -64,8 +65,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     if (categories?.length) {
       categoryPages = categories
-        .filter((c) => isValidSlug(c.slug))
-        .map((category) => ({
+        .filter((c: any) => isValidSlug(c.slug))
+        .map((category: any) => ({
           url: `${baseUrl}/shop?category=${encodeURIComponent(category.slug!.trim())}`,
           lastModified: safeLastModified(category.updated_at),
           changeFrequency: 'weekly' as const,

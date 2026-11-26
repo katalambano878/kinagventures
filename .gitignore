@@ -36,3 +36,6 @@ supabase/.temp
 
 # Vercel
 .vercel
+
+# Migration dumps (auth hashes, customer data): never commit
+migration-artifacts/

@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerSupabase } from '@/lib/supabase-server';
 
-// Server-side Supabase client (no auth needed for public data)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Same rows a visitor sees (the old anon-key client), in-process.
+const supabase = createServerSupabase('anon');
+
+export const dynamic = 'force-dynamic';
 
 // Simple in-memory cache
 let cache: { data: any; timestamp: number } | null = null;

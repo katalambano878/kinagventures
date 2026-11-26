@@ -1,41 +1,12 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createServerSupabase } from '@/lib/supabase-server';
 
 /**
- * Server-side Supabase client with service role key.
- * ONLY use this in API routes and server actions — NEVER in client components.
+ * Server-side service-role client (bypasses RLS), in-process against
+ * DATABASE_URL. ONLY use this in API routes and server actions — NEVER in
+ * client components. Always verify the caller is authorized first.
+ *
+ * Typed as the supabase-js client it replaces, so existing call sites keep
+ * their types; the compat layer implements the subset the app uses.
  */
-
-let _client: SupabaseClient | null = null;
-
-function getClient(): SupabaseClient {
-  if (_client) return _client;
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL');
-  }
-  if (!supabaseServiceKey) {
-    throw new Error(
-      'Missing SUPABASE_SERVICE_ROLE_KEY — admin operations cannot run. ' +
-        'Set this in your environment (Coolify → Environment Variables).'
-    );
-  }
-
-  _client = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-  return _client;
-}
-
-export const supabaseAdmin = new Proxy({} as SupabaseClient, {
-  get(_target, prop, receiver) {
-    const client = getClient();
-    const value = Reflect.get(client, prop, receiver);
-    return typeof value === 'function' ? value.bind(client) : value;
-  },
-});
+export const supabaseAdmin = createServerSupabase('service') as SupabaseClient;

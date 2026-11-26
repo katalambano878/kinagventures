@@ -130,8 +130,20 @@ export default function SignupPage() {
           }),
         }).catch((err) => console.error('Welcome notification error:', err));
 
+        // Sign-up never returns a session (so it cannot reveal who already
+        // has an account) and sends no confirmation email: the account is
+        // ready at once, so sign in with the same email and password.
         if (!data.session) {
-          setSuccess(true);
+          const signIn = await supabase.auth.signInWithPassword({
+            email: formData.email,
+            password: formData.password,
+          });
+          if (signIn.error || !signIn.data.session) {
+            setAuthError('We could not create an account with this email. If you already have one, please sign in.');
+            return;
+          }
+          router.push('/account');
+          router.refresh();
         } else {
           router.push('/account');
           router.refresh();

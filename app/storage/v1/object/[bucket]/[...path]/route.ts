@@ -54,7 +54,7 @@ function tooLarge() {
     {
       statusCode: "413",
       error: "Payload too large",
-      message: "The file is too large. Images and PDFs may be up to 15 MB.",
+      message: "The file is too large. Images and PDFs may be up to 15 MB, videos up to 50 MB.",
     },
     { status: 413 }
   );
@@ -80,12 +80,12 @@ async function store(req: NextRequest, ctx: { params: Promise<{ bucket: string; 
     return NextResponse.json({ statusCode: "400", error: "invalid_upload", message: "The upload could not be read." }, { status: 400 });
   }
 
-  // Only images and PDFs: an uploaded HTML/script file served from this
-  // origin would run as the store.
+  // Only images, product videos and PDFs: an uploaded HTML/script file
+  // served from this origin would run as the store.
   const contentType = acceptedUploadType(objectPath, upload.contentType);
   if (!contentType) {
     return NextResponse.json(
-      { statusCode: "415", error: "invalid_mime_type", message: "Only image or PDF files can be uploaded." },
+      { statusCode: "415", error: "invalid_mime_type", message: "Only image, video or PDF files can be uploaded." },
       { status: 415 }
     );
   }

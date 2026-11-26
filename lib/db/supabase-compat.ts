@@ -719,7 +719,7 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
     };
     const o = sqlOp[op];
     if (!o) throw new Error(`Unsupported or() operator: ${op}`);
-    params.push(val);
+    params.push(op === "like" || op === "ilike" ? val.split("*").join("%") : val);
     return `${uuidSafeLeft(col, val)} ${o} $${params.length}`;
   }
 
@@ -1364,8 +1364,9 @@ export function applyPostgrestParams(
     else if (op === "gte") qb.gte(key, coerce(value));
     else if (op === "lt") qb.lt(key, coerce(value));
     else if (op === "lte") qb.lte(key, coerce(value));
-    else if (op === "like") qb.like(key, value);
-    else if (op === "ilike") qb.ilike(key, value);
+    // PostgREST accepts * as the wildcard in like/ilike URL filters.
+    else if (op === "like") qb.like(key, value.split("*").join("%"));
+    else if (op === "ilike") qb.ilike(key, value.split("*").join("%"));
     else if (op === "cs") qb.contains(key, coerceJson(value));
     else if (op === "cd") qb.containedBy(key, coerceJson(value));
     else if (op === "is") qb.is(key, value === "null" ? null : coerce(value));

@@ -57,14 +57,20 @@ const IMAGE_TYPES = new Set([
   "image/vnd.microsoft.icon",
 ]);
 const DOCUMENT_TYPES = new Set(["application/pdf"]);
+/**
+ * Product videos: Kinag's product form uploads MP4 / WebM / OGG / MOV / AVI
+ * to the products bucket and the product page plays them in <video>, so they
+ * are accepted and served inline with their own type (as Supabase did).
+ */
+const VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/ogg", "video/quicktime", "video/x-msvideo"]);
 
-/** Upload size caps. Only images and PDFs may be uploaded. */
+/** Upload size caps. Images, product videos and PDFs may be uploaded. */
 export const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 export const MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
+/** Supabase's default per-file limit; the largest video already stored is ~40 MB. */
+export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 /** The largest upload of any kind (for refusing a body before reading it). */
-export const MAX_UPLOAD_BYTES = Math.max(MAX_IMAGE_BYTES, MAX_DOCUMENT_BYTES);
-/** @deprecated videos are no longer accepted; kept so old imports still compile. */
-export const MAX_VIDEO_BYTES = MAX_UPLOAD_BYTES;
+export const MAX_UPLOAD_BYTES = Math.max(MAX_IMAGE_BYTES, MAX_DOCUMENT_BYTES, MAX_VIDEO_BYTES);
 
 function baseType(contentType: string | null | undefined): string {
   return String(contentType || "").split(";")[0].trim().toLowerCase();
@@ -75,6 +81,7 @@ export function uploadLimitFor(contentType: string | null | undefined): number |
   const type = baseType(contentType);
   if (IMAGE_TYPES.has(type)) return MAX_IMAGE_BYTES;
   if (DOCUMENT_TYPES.has(type)) return MAX_DOCUMENT_BYTES;
+  if (VIDEO_TYPES.has(type)) return MAX_VIDEO_BYTES;
   return null;
 }
 
@@ -96,7 +103,9 @@ export function acceptedUploadType(objectPath: string, contentType: string | nul
  * - Raster images: inline with their own type and nosniff.
  * - SVG: inline, but under a sandbox CSP so script inside one never runs on
  *   this origin (also when opened directly).
- * - PDFs and everything else (videos uploaded before, unknown types): always
+ * - Product videos: inline with their own type, nosniff and the sandbox CSP
+ *   (a media type never runs script).
+ * - PDFs and everything else (unknown types): always
  *   a download (`Content-Disposition: attachment`) under a sandbox CSP, so
  *   nothing but an image ever renders on the store's origin.
  */
@@ -110,6 +119,10 @@ export function objectResponseHeaders(contentType: string): Record<string, strin
     return headers;
   }
   headers["Content-Security-Policy"] = sandbox;
+  if (VIDEO_TYPES.has(type)) {
+    headers["Content-Type"] = type;
+    return headers;
+  }
   headers["Content-Disposition"] = "attachment";
   headers["Content-Type"] = DOCUMENT_TYPES.has(type) ? type : "application/octet-stream";
   return headers;

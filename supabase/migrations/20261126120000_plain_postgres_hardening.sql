@@ -160,3 +160,7 @@ begin
   return new;
 end;
 $function$;
+
+-- 9. pg_trgm lives in schema `extensions` here (it was on the search path on
+--    Supabase): the agent's product search (similarity()) must find it.
+ALTER FUNCTION public.fuzzy_product_search(text, integer, numeric) SET search_path TO public, extensions;

@@ -91,18 +91,21 @@ export const FK_MAP: Record<string, FkEdge[]> = {
 
 /**
  * The public tables the data API (/rest/v1) may touch, top-level or embedded
- * (17 of the 36 in the schema): the tables this app's code queries and embeds.
+ * (24 of the 36 in the schema): the tables this app's code queries and embeds.
  * Anything else (other public tables, pg_roles, pg_settings, auth.*,
  * storage.*) is refused before any SQL runs.
  */
 export const PUBLIC_TABLES: ReadonlySet<string> = new Set([
+  "ai_memory",
   "banners",
   "categories",
+  "chat_conversations",
   "cms_content",
   "contact_submissions",
   "coupons",
   "customers",
   "order_items",
+  "order_status_history",
   "orders",
   "preorders",
   "product_images",
@@ -111,6 +114,10 @@ export const PUBLIC_TABLES: ReadonlySet<string> = new Set([
   "profiles",
   "reviews",
   "shipping_fees",
+  "site_settings",
   "store_modules",
   "store_settings",
+  "support_messages",
+  "support_tickets",
+  "wa_agent_webhook_config",
 ]);

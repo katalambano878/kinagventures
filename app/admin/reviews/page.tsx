@@ -17,14 +17,26 @@ export default function AdminReviewsPage() {
   const fetchReviews = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      // reviews.user_id points at auth.users, not profiles, so profiles cannot
+      // be embedded: load the reviewers' profiles in a second query.
+      const { data: rows, error } = await supabase
         .from('reviews')
         .select(`
           *,
-          profiles:user_id (full_name, email),
           products:product_id (name, product_images (url))
         `)
         .order('created_at', { ascending: false });
+
+      let data: any[] | null = rows;
+      const userIds = Array.from(new Set((rows || []).map((r: any) => r.user_id).filter(Boolean)));
+      if (!error && userIds.length) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', userIds);
+        const byId = new Map((profiles || []).map((p: any) => [p.id, p]));
+        data = (rows || []).map((r: any) => ({ ...r, profiles: byId.get(r.user_id) || null }));
+      }
 
       if (error) {
         // Graceful fallback if table doesn't exist or permissions fail

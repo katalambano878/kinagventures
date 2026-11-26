@@ -11,7 +11,9 @@ async function getProduct(slug: string) {
     const { data } = await supabase
       .from('products')
       .select(
-        'name, description, short_description, seo_title, seo_description, images, price, compare_at_price, sku, brand, quantity, track_quantity, continue_selling, rating_avg, review_count, category_id, metadata'
+        // Photos live in product_images (products has no `images` column; asking
+        // for one failed the whole query, so every page said "Product Not Found").
+        'name, description, short_description, seo_title, seo_description, images:product_images(url, position), price, compare_at_price, sku, brand, quantity, track_quantity, continue_selling, rating_avg, review_count, category_id, metadata'
       )
       .eq('slug', slug)
       .eq('status', 'active')
